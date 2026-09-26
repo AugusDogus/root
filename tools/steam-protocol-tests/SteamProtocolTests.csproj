@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../engine-probe/MatchSetup.cs" Link="MatchSetup.cs" />
+    <Compile Include="../../engine-probe/SteamFrames.cs" Link="SteamFrames.cs" />
+    <Compile Include="../../engine-probe/SteamInvitation.cs" Link="SteamInvitation.cs" />
+  </ItemGroup>
+</Project>

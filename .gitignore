@@ -1,0 +1,32 @@
+.lab/
+**/bin/
+**/obj/
+**/__pycache__/
+dist/
+launcher/vendor/
+launcher/payload/
+relay/node_modules/
+relay/.wrangler/
+relay/.alchemy/
+relay/.dev.vars
+relay/.env
+
+# Local credentials, captures, and deployment state.
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+**/.wrangler/
+**/.alchemy/
+**/node_modules/
+results/
+*.log
+*.pyc
+*.pyo
+*.pem
+*.key
+
+# Compiled game bindings and distribution artifacts must stay local.
+*.dll
+*.exe
+*.zip

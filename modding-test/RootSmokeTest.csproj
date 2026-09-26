@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx.Core" HintPath="$(GameDir)/BepInEx/core/BepInEx.Core.dll" />
+    <Reference Include="BepInEx.Unity.IL2CPP" HintPath="$(GameDir)/BepInEx/core/BepInEx.Unity.IL2CPP.dll" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(GameDir)/BepInEx/core/Il2CppInterop.Runtime.dll" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(GameDir)/BepInEx/interop/Il2Cppmscorlib.dll" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.CoreModule.dll" />
+  </ItemGroup>
+</Project>

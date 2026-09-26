@@ -1,0 +1,264 @@
+using Canis.actions;
+using Canis.json;
+using Canis.json.events;
+using Canis.matchThread;
+using Canis.utils.ids;
+using Networking.selection.messages;
+using Networking.selection.messages.outgoing;
+using Networking.selection.targetinformation;
+using Networking.selection.targetresponse;
+using tuber.canis;
+using tuber.canis.data.matchinitdata;
+using tuber_canis.data;
+using System.Security.Cryptography;
+
+namespace RootEngineProbe;
+
+internal sealed record SelectionOffer(int Counter, string Prompt, string Source, string[] Targets);
+
+internal enum ChoiceResult
+{
+    Accepted, NoSuchSelection, WrongPlayer, UnsupportedSelection, InvalidSource, InvalidTarget, EngineDidNotAdvance
+}
+
+// All calls, including message dispatch, run on the game's main thread.
+internal sealed class HostedMatch
+{
+    public TuberMatch Match { get; }
+    public tuber.canis.entities.TuberPlayerEntity[] SeatPlayers { get; }
+    public TuberPlayerMatchInitData[] SeatInitialization { get; }
+    public MatchThreadV2 Thread { get; }
+    public string CheckpointInitialization { get; }
+    public List<string>[] Messages { get; }
+    private readonly string?[] completionMessages;
+    public string?[] CompletionMessages => completionMessages.ToArray();
+    public int PlayerCount => Messages.Length;
+
+    public void RestoreCompletionMessages(string?[] saved)
+    {
+        if (saved.Length != PlayerCount) throw new ArgumentException("Saved results do not match the roster.", nameof(saved));
+        Array.Copy(saved, completionMessages, saved.Length);
+    }
+
+    public string[] Snapshot(int seat)
+    {
+        var accounts = new Il2CppSystem.Collections.Generic.List<AccountID>();
+        accounts.Add(SeatInitialization[seat].accountID);
+        var state = new SerializeGameState(Match.TuberPlaymat,
+            accounts.Cast<Il2CppSystem.Collections.Generic.IEnumerable<AccountID>>(), Match).GetState();
+        state.Entities = Canis.messages.SerializedGameStateObfuscator.Instance.ObfuscateEntity(
+            Match, SeatPlayers[seat], state.Entities, Canis.obfuscation.Visibility.Public);
+        state = Canis.Match.StripUnusedAttributes(state);
+        var messages = new List<string>
+        {
+            JSON.ToJSON(new Canis.messages.sequence.SequenceMessage(null, state.Cast<Canis.messages.IGameMessage>()), false)
+        };
+        if (completionMessages[seat] is { } completed)
+        {
+            messages.Add(completed);
+            return messages.ToArray();
+        }
+        var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
+        if (Thread.HasPendingResponse(counter))
+        {
+            var selection = Canis.Match.StripUnusedAttributes(Thread.GetPlayerPendingResponse(counter).Item2.Selection);
+            messages.Add(JSON.ToJSON(new Canis.messages.sequence.SequenceMessage(null, selection.Cast<Canis.messages.IGameMessage>()), false));
+        }
+        return messages.ToArray();
+    }
+
+    public HostedMatch(bool sixPlayers) : this(CreateInitialization(sixPlayers)) { }
+    public HostedMatch(MatchSetup setup) : this(CreateInitialization(true, setup)) { }
+
+    public HostedMatch(TuberMatchInitData init)
+    {
+        dwd.core.data.ReflectionTypeInitializer.Initialize();
+        Messages = Enumerable.Range(0, init.TuberPlayers.Count).Select(_ => new List<string>()).ToArray();
+        completionMessages = new string?[init.TuberPlayers.Count];
+        var seats = Enumerable.Range(0, init.TuberPlayers.Count)
+            .ToDictionary(seat => init.TuberPlayers[seat].accountID.ToString(), seat => seat);
+        var chosenFactions = init.TuberPlayers.ToArray().Select(player => player.Faction).ToArray();
+        Match = new TuberMatch();
+        Il2CppSystem.Action<AccountID, DWDEvent> dispatcher = new Action<AccountID, DWDEvent>((account, message) =>
+        {
+            var seat = seats[account.ToString()];
+            var json = JSON.ToJSON(message, false);
+            Messages[seat].Add(json);
+            if (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<tuber.canis.messages.GameResults>() is not null)
+                completionMessages[seat] = json;
+        });
+        Match.SetMessageDispatcher(dispatcher);
+        Match.Configure(init);
+        Match.UseTimers = false;
+        Match.UseTurnTimers = false;
+        Match.messageActionFactory = new ObfuscatedMessageActionFactory().Cast<IMessageActionFactory>();
+        Match.Start();
+        // Root can swap the Vagabonds between native accounts. Private seats
+        // follow the chosen faction, independently of the engine's account order.
+        SeatInitialization = chosenFactions.Select(faction =>
+            Match.TuberMatchInitData.TuberPlayers.ToArray().Single(player => player.Faction == faction)).ToArray();
+        SeatPlayers = SeatInitialization.Select(player => Match.PlayersMap[player.accountID]).ToArray();
+        Messages = SeatInitialization.Select(player => Messages[seats[player.accountID.ToString()]]).ToArray();
+        completionMessages = SeatInitialization.Select(player => completionMessages[seats[player.accountID.ToString()]]).ToArray();
+        seats.Clear();
+        for (var seat = 0; seat < SeatInitialization.Length; seat++) seats.Add(SeatInitialization[seat].accountID.ToString(), seat);
+        // Clockwork turns are scripted, but expansion interactions such as
+        // returning a destroyed relic use the shared native AI evaluators.
+        foreach (var player in Match.Players)
+            if (player.IsClockwork() && player.aiProfile.TryCast<tuber.canis.entities.UnassignedAIProfile>() is not null)
+                player.aiProfile = new tuber.canis.entities.ai.AIProfile(Match, player);
+        Thread = Match.GetThread(MatchThread.MAIN_THREAD).Cast<MatchThreadV2>();
+        // Cache configuration without the loaded checkpoint. Serializing the
+        // old board and save again on every move makes resumed games sluggish.
+        var nativeInit = Match.TuberMatchInitData;
+        var savedState = nativeInit.gameState;
+        var savedData = nativeInit.saveData;
+        try
+        {
+            nativeInit.gameState = null;
+            nativeInit.saveData = null;
+            var ordered = JSON.Deserialize<TuberMatchInitData>(JSON.ToJSON(nativeInit, false));
+            var players = ordered.TuberPlayers.ToArray().ToDictionary(player => player.accountID.ToString());
+            ordered.TuberPlayers.Clear();
+            foreach (var player in SeatInitialization) ordered.AddTuberPlayer(players[player.accountID.ToString()]);
+            CheckpointInitialization = JSON.ToJSON(ordered, false);
+        }
+        finally
+        {
+            nativeInit.gameState = savedState;
+            nativeInit.saveData = savedData;
+        }
+    }
+
+    public static TuberMatchInitData CreateInitialization(bool sixPlayers, MatchSetup? setup = null)
+    {
+        var init = new TuberMatchInitData(new GameID(Guid.NewGuid().ToString()))
+        {
+            randomSeed = int.TryParse(Environment.GetEnvironmentVariable("ROOT_LAB_TEST_SEED"), out var seed)
+                ? seed : RandomNumberGenerator.GetInt32(int.MaxValue),
+            DoNotShufflePlayers = true
+        };
+        init.AddOption("matchType", "Live");
+        if (setup is not null) NativeMatchSetup.Apply(init, setup);
+        var factions = setup is not null ? setup.Factions.Select(id => (Factions)id).ToArray() : sixPlayers
+            ? new[] { Factions.MarquiseDeCat, Factions.EyrieDynasties, Factions.WoodlandAlliance, Factions.Vagabond, Factions.LizardCult, Factions.RiverfolkCompany }
+            : new[] { Factions.MarquiseDeCat, Factions.EyrieDynasties, Factions.WoodlandAlliance, Factions.Vagabond };
+        for (var i = 0; i < factions.Length; i++)
+        {
+            var account = new AccountID(Guid.NewGuid().ToString());
+            init.AddTuberPlayer(setup is not null ? NativeMatchSetup.Player($"Player {i + 1}", account, i, setup) : new TuberPlayerMatchInitData($"Lab player {i + 1}", account)
+            {
+                Faction = factions[i],
+                StartingCharacter = setup is null ? VagabondCharacters.Unknown : (VagabondCharacters)setup.Characters[i],
+                PlayerStartingOrder = i
+            });
+        }
+        return init;
+    }
+
+    public SelectionOffer? GetOffer(int seat)
+    {
+        var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
+        if (Thread.HasPendingResponse(counter) == false)
+            return null;
+        var selection = Thread.GetPlayerPendingResponse(counter).Item2.Selection.TryCast<SelectionWithTargetsRequired>();
+        if (selection is null || selection.SourceID is null || selection.TargetMap is null)
+            return null;
+        if (selection.TargetMap.TryGetValue(selection.SourceID, out var information) == false || information.Length != 1)
+            return null;
+        var targets = information[0].TryCast<EntityListTargetInformation>();
+        if (targets is null || targets.NumberToSelect != 1)
+            return null;
+        return new SelectionOffer(counter, selection.Prompt.ID, selection.SourceID.ToString(),
+            targets.ValidTargets.Select(id => id.ToString()).ToArray());
+    }
+
+    public ChoiceResult Choose(int seat, int counter, string source, string target)
+        => ChooseTargets(seat, counter, source, new TargetChoice[] { new TargetChoice.Entities(new[] { target }) });
+
+    public ChoiceResult ChooseTargets(int seat, int counter, string source, IReadOnlyList<TargetChoice> choices)
+    {
+        if (Thread.HasPendingResponse(counter) == false)
+            return ChoiceResult.NoSuchSelection;
+        if (Thread.GetPlayerEntityForCounter(counter).Pointer != SeatPlayers[seat].Pointer)
+            return ChoiceResult.WrongPlayer;
+        var selection = Thread.GetPlayerPendingResponse(counter).Item2.Selection.TryCast<SelectionWithTargetsRequired>();
+        if (selection is null) return ChoiceResult.UnsupportedSelection;
+        var sourceId = new EntityID(source);
+        if (selection.TargetMap.TryGetValue(sourceId, out var information) == false) return ChoiceResult.InvalidSource;
+        if (information.Length != choices.Count) return ChoiceResult.InvalidTarget;
+        for (var index = 0; index < choices.Count; index++)
+        {
+            var result = choices[index].Validate(information[index]);
+            if (result != ChoiceResult.Accepted) return result;
+        }
+        var responses = new Il2CppSystem.Collections.Generic.List<TargetResponse>();
+        foreach (var choice in choices) responses.Add(choice.ToNative());
+        var response = new SelectionWithTargets(selection, sourceId,
+            responses.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetResponse>>());
+        Match.Write(response, SeatInitialization[seat].accountID);
+        return Thread.HasPendingResponse(counter) ? ChoiceResult.EngineDidNotAdvance : ChoiceResult.Accepted;
+    }
+
+    public ChoiceResult Pass(int seat, int counter)
+    {
+        if (Thread.HasPendingResponse(counter) == false) return ChoiceResult.NoSuchSelection;
+        if (Thread.GetPlayerEntityForCounter(counter).Pointer != SeatPlayers[seat].Pointer) return ChoiceResult.WrongPlayer;
+        var selection = Thread.GetPlayerPendingResponse(counter).Item2.Selection.TryCast<SelectionWithTargetsRequired>();
+        if (selection is null || selection.Forced) return ChoiceResult.UnsupportedSelection;
+        if (selection.IgnoreFirst)
+        {
+            if (selection.SourceID is null || selection.TargetMap.TryGetValue(selection.SourceID, out var information) == false)
+                return ChoiceResult.UnsupportedSelection;
+            // An automatically selected source still requires its forced targets.
+            // Optional targets, such as the discard undo prompt, may be skipped.
+            foreach (var target in information)
+                if (target.TryCast<EntityListTargetInformation>() is not { Forced: false })
+                    return ChoiceResult.UnsupportedSelection;
+        }
+        var response = Outgoing.Pass(selection);
+        Match.Write(response, SeatInitialization[seat].accountID);
+        return Thread.HasPendingResponse(counter) ? ChoiceResult.EngineDidNotAdvance : ChoiceResult.Accepted;
+    }
+
+    public ChoiceResult ChooseCustom(int seat, int counter, int? choice)
+    {
+        if (Thread.HasPendingResponse(counter) == false) return ChoiceResult.NoSuchSelection;
+        if (Thread.GetPlayerEntityForCounter(counter).Pointer != SeatPlayers[seat].Pointer) return ChoiceResult.WrongPlayer;
+        var selection = Thread.GetPlayerPendingResponse(counter).Item2.Selection;
+        var archetype = selection.TryCast<ArchetypeCustomChoiceRequired>();
+        var custom = selection.TryCast<CustomChoiceRequired>();
+        var integer = selection.TryCast<IntChoiceRequired>();
+        var count = archetype?.Buttons.Count ?? custom?.Buttons.Length;
+        if (count is null && integer is null) return ChoiceResult.UnsupportedSelection;
+        if (choice is null)
+        {
+            if (archetype?.forced != false && integer?.forced != false) return ChoiceResult.InvalidTarget;
+        }
+        else if (integer is not null)
+        {
+            if (choice < integer.min || choice > integer.amount) return ChoiceResult.InvalidTarget;
+        }
+        else if (choice < 0 || choice >= count) return ChoiceResult.InvalidTarget;
+        var response = new dwd.core.match.messages.outgoing.GameCustomChoice(Match.TuberMatchInitData.gameID,
+            choice is int number ? new Il2CppSystem.Nullable<int>(number) : new Il2CppSystem.Nullable<int>(), counter);
+        Match.Write(response, SeatInitialization[seat].accountID);
+        return Thread.HasPendingResponse(counter) ? ChoiceResult.EngineDidNotAdvance : ChoiceResult.Accepted;
+    }
+
+    public ChoiceResult SetPrices(int seat, int counter, int handCard, int riverboats, int mercenaries)
+    {
+        if (Thread.HasPendingResponse(counter) == false) return ChoiceResult.NoSuchSelection;
+        if (Thread.GetPlayerEntityForCounter(counter).Pointer != SeatPlayers[seat].Pointer) return ChoiceResult.WrongPlayer;
+        if (Thread.GetPlayerPendingResponse(counter).Item2.Selection.TryCast<tuber.canis.messages.RiverfolkPricesRequired>() is null)
+            return ChoiceResult.UnsupportedSelection;
+        if (new[] { handCard, riverboats, mercenaries }.Any(price => price < 1 || price > 4)) return ChoiceResult.InvalidTarget;
+        var prices = new Il2CppSystem.Collections.Generic.Dictionary<RiverfolkService, int>();
+        prices.Add(RiverfolkService.HandCard, handCard);
+        prices.Add(RiverfolkService.Riverboats, riverboats);
+        prices.Add(RiverfolkService.Mercenaries, mercenaries);
+        Match.Write(new tuber.canis.messages.ChosenRiverfolkPrices(Match.TuberMatchInitData.gameID, prices, counter),
+            SeatInitialization[seat].accountID);
+        return Thread.HasPendingResponse(counter) ? ChoiceResult.EngineDidNotAdvance : ChoiceResult.Accepted;
+    }
+}

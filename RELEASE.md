@@ -8,7 +8,7 @@ Private six-player games with Steam friends, using Root's own board and controls
 - Resign, review all six final scores, and return to the menu for another game.
 - Receive clearer errors for unsupported actions, with bounded match history.
 
-On Windows, download **Root Six Player.exe** and open it. On Linux, extract the
+On Windows, download **RootSixPlayer.exe** and open it. On Linux, extract the
 Linux ZIP and run **Play.sh**. Keep Steam open and install Root first. All players
 need the same mod release. Open the mod before accepting a Steam invitation.
 

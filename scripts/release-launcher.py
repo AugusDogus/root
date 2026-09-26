@@ -2,6 +2,7 @@
 """Upload verified playtest packages as a private repository's draft release."""
 import hashlib
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,9 +42,20 @@ def main():
     with tempfile.TemporaryDirectory(prefix='root-release-') as temporary:
         body = Path(temporary) / 'notes.md'
         body.write_text(notes)
+        # GitHub normalizes spaces in asset names. Stage explicit download names
+        # so SHA256SUMS works directly against the downloaded files.
+        assets = []
+        sums = []
+        for name in names:
+            target = Path(temporary) / ('RootSixPlayer.exe' if name == names[0] else name)
+            shutil.copy2(dist / name, target)
+            assets.append(str(target))
+            sums.append(f'{expected[name]}  {target.name}\n')
+        checksums = Path(temporary) / 'SHA256SUMS'
+        checksums.write_text(''.join(sums))
         subprocess.run(['gh', 'release', 'create', f'v{VERSION}', '--repo', 'AugusDogus/root-six-player',
             '--target', head, '--draft', '--prerelease', '--title', f'Root Six Player {VERSION}', '--notes-file', str(body),
-            *[str(dist / name) for name in names], str(dist / 'SHA256SUMS')], check=True)
+            *assets, str(checksums)], check=True)
 
 
 if __name__ == '__main__':

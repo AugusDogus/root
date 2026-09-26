@@ -15,6 +15,16 @@ internal static class MatchSetupTests
             if (setup.Validate() is null) throw new Exception("Invalid settings were accepted");
         }
         Valid(new());
+        var ai = new MatchSetup { AI = new AIDifficulty?[] { null, null, AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Medium } };
+        Valid(ai);
+        if (!MatchSetup.Parse(JsonSerializer.Serialize(ai)).AI.SequenceEqual(ai.AI))
+            throw new Exception("AI difficulties changed in settings round trip");
+        if (!ai.IsHumanSeat(1) || ai.IsHumanSeat(2)) throw new Exception("AI seats were offered to human players");
+        Invalid(new() { AI = new AIDifficulty?[] { AIDifficulty.Easy, null, null, null, null, null } });
+        Invalid(new() { AI = Array.Empty<AIDifficulty?>() });
+        Invalid(new() { AI = new AIDifficulty?[] { null, (AIDifficulty)9, null, null, null, null } });
+        Invalid(new() { Factions = new[] { 0, 11, 2, 3, 6, 7 }, AI = new AIDifficulty?[] { null, AIDifficulty.Medium, null, null, null, null } });
+        if (!MatchSetup.Parse("{}").IsHumanSeat(5)) throw new Exception("Older settings lost their human seats");
         Valid(new() { Factions = new[] { 14, 15, 8, 9, 6, 7 }, Map = 2, Deck = 1 });
         Valid(new() { Factions = new[] { 14, 15, 10, 11, 12, 13 }, BotDifficulty = 3 });
         Valid(new() { Factions = new[] { 0, 1, 3, 5, 8, 9 }, Characters = new[] { 0, 0, 7, 9, 0, 0 } });

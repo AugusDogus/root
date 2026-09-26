@@ -7,7 +7,8 @@ internal sealed class NativeSetupMenu
     private readonly Action<MatchSetup> start;
     private readonly Action back;
     private MatchSetup setup = new();
-    private string message = "Choose your faction and five seats for friends or Clockwork bots.";
+    private const string Instructions = "Choose a faction and Human or AI for each seat. Clockwork uses its own rules.";
+    private string message = Instructions;
 
     public NativeSetupMenu(NativeMenu view, Action<MatchSetup> start, Action back)
     { this.view = view; this.start = start; this.back = back; }
@@ -21,7 +22,11 @@ internal sealed class NativeSetupMenu
         {
             var index = seat;
             var prefix = seat == 0 ? "You: " : $"{seat + 1}. ";
-            view.Button(prefix + MatchSetup.FactionName(setup.Factions[seat]) + (MatchSetup.IsBot(setup.Factions[seat]) ? " (bot)" : ""), 70, 190 + seat * 70, 535, 58, () => Faction(index));
+            view.Button(prefix + MatchSetup.FactionName(setup.Factions[seat]), 70, 190 + seat * 70, 350, 58, () => Faction(index));
+            var controller = MatchSetup.IsClockwork(setup.Factions[seat]) ? "Clockwork"
+                : setup.AI[seat] is { } difficulty ? $"AI: {difficulty}" : "Human";
+            if (seat == 0) view.Text("You", 435, 190, 170, 58, 23);
+            else view.Button(controller, 435, 190 + seat * 70, 170, 58, () => Controller(index));
         }
         view.Button("Map: " + MatchSetup.Maps[setup.Map], 675, 190, 535, 58, Maps);
         view.Button("Deck: " + MatchSetup.Decks[setup.Deck], 675, 260, 535, 58, () => { setup = setup with { Deck = 1 - setup.Deck }; Show(); });
@@ -44,14 +49,15 @@ internal sealed class NativeSetupMenu
         var index = 0;
         foreach (var faction in MatchSetup.PlayerFactions)
         {
-            if (MatchSetup.IsBot(faction.Id) != bots) continue;
-            if (MatchSetup.IsBot(setup.Factions[seat]) && faction.Id == setup.Factions[0]) continue;
+            if (MatchSetup.IsClockwork(faction.Id) != bots) continue;
+            if (MatchSetup.IsClockwork(setup.Factions[seat]) && faction.Id == setup.Factions[0]) continue;
             if (!bots && !lib.data.FactionUtils.ReleasedPlayerFactions.Contains((tuber_canis.data.Factions)faction.Id)) continue;
             Choice(faction.Name, index++, () =>
             {
                 var roster = setup.Factions.ToArray();
                 var characters = setup.Characters.ToArray();
                 var traits = setup.BotTraits.ToArray();
+                var ai = setup.AI.ToArray();
                 var occupied = Array.IndexOf(roster, faction.Id);
                 if (occupied >= 0)
                 {
@@ -60,16 +66,36 @@ internal sealed class NativeSetupMenu
                     (traits[occupied], traits[seat]) = (traits[seat], traits[occupied]);
                 }
                 else { roster[seat] = faction.Id; characters[seat] = 0; traits[seat] = Array.Empty<int>(); }
-                setup = setup with { Factions = roster, Characters = characters, BotTraits = traits };
-                message = "Choose your faction and five seats for friends or Clockwork bots.";
+                // Control belongs to the seat, while characters and traits
+                // follow the faction. Clockwork cannot use ordinary AI levels.
+                for (var changedSeat = 0; changedSeat < 6; changedSeat++)
+                    if (MatchSetup.IsClockwork(roster[changedSeat])) ai[changedSeat] = null;
+                setup = setup with { Factions = roster, Characters = characters, BotTraits = traits, AI = ai };
+                message = Instructions;
                 Show();
             });
         }
         if (seat != 0)
-            view.Button(bots ? "Human factions" : "Clockwork bots", 760, 685, 380, 55, () => Faction(seat, !bots));
+            view.Button(bots ? "Standard factions" : "Clockwork factions", 760, 685, 380, 55, () => Faction(seat, !bots));
         if (bots)
             view.Button("Difficulty: " + MatchSetup.BotDifficulties[setup.BotDifficulty], 300, 430, 680, 60,
                 () => { setup = setup with { BotDifficulty = (setup.BotDifficulty + 1) % 4 }; Faction(seat, true); });
+    }
+
+    private void Controller(int seat)
+    {
+        if (MatchSetup.IsClockwork(setup.Factions[seat])) { Clockwork(seat); return; }
+        Page($"Seat {seat + 1}: {MatchSetup.FactionName(setup.Factions[seat])}", "AI plays the normal faction rules. Each AI can have its own difficulty.");
+        void Select(AIDifficulty? difficulty)
+        {
+            var ai = setup.AI.ToArray();
+            ai[seat] = difficulty;
+            setup = setup with { AI = ai };
+            Show();
+        }
+        Choice("Human", 0, () => Select(null));
+        foreach (var difficulty in Enum.GetValues<AIDifficulty>())
+            Choice($"AI: {difficulty}", (int)difficulty + 1, () => Select(difficulty));
     }
 
     private void Maps()
@@ -93,7 +119,7 @@ internal sealed class NativeSetupMenu
         for (var seat = 0; seat < 6; seat++)
         {
             var index = seat;
-            if (MatchSetup.IsBot(setup.Factions[seat]))
+            if (MatchSetup.IsClockwork(setup.Factions[seat]))
             {
                 Choice(MatchSetup.FactionName(setup.Factions[seat]) + $": {setup.BotTraits[seat].Length} traits", row++, () => Clockwork(index));
                 continue;

@@ -1,6 +1,6 @@
 # Root private six-player prototype
 
-An experimental private host and client mod for Root 2.1.5 (Steam build 22238765). It runs the game's bundled rules engine in a separate Unity process and connects Root's native board and selection controls to that host. The host chooses six factions, including expansion factions and Clockwork bots in friend seats, plus the map, deck, Vagabond characters, landmarks, and hirelings.
+An experimental private host and client mod for Root 2.1.5 (Steam build 22238765). It runs the game's bundled rules engine in a separate Unity process and connects Root's native board and selection controls to that host. The host chooses six factions, including expansion factions with ordinary AI or Clockwork in friend seats, plus the map, deck, Vagabond characters, landmarks, and hirelings.
 
 Development uses copied game installations and separate Wine prefixes. Nothing is installed into the normal Steam game directory. Each process gets its own muted Xvfb display, with reduced rendering quality and process priority.
 
@@ -17,7 +17,7 @@ bash scripts/build-probe.sh
 python3 scripts/safe-test.py python3 scripts/package-launcher.py
 ```
 
-Outputs are `dist/root-six-player-0.2.0-windows.zip` and `dist/root-six-player-0.2.0-linux.zip`. Windows ships a standalone `Root Six Player.exe`, also available directly in `dist`. Linux requires Python 3.10+ and uses `Play.sh`. Neither package contains Root files or a Markdown guide. The launcher opens Root directly; Host, Join friends, Resume and invitations use an in-game menu built from Root's own fonts and sprites. First-time preparation is automatic. The browser controls are available only with --browser for development. Preparation generates host and client bindings in separate processes to limit peak memory. Steam mode needs no relay deployment. Friends open **Join friends** before accepting an invite. Steam launches ordinary Root if the mod is closed. The development browser controls also support pasted private seat invitations. Cloudflare mode still requires relay deployment.
+Outputs are `dist/root-six-player-0.3.0-windows.zip` and `dist/root-six-player-0.3.0-linux.zip`. Windows ships a standalone `Root Six Player.exe`, also available directly in `dist`. Linux requires Python 3.10+ and uses `Play.sh`. Neither package contains Root files or a Markdown guide. The launcher opens Root directly; Host, Join friends, Resume and invitations use an in-game menu built from Root's own fonts and sprites. First-time preparation is automatic. The browser controls are available only with --browser for development. Preparation generates host and client bindings in separate processes to limit peak memory. Steam mode needs no relay deployment. Friends open **Join friends** before accepting an invite. Steam launches ordinary Root if the mod is closed. The development browser controls also support pasted private seat invitations. Cloudflare mode still requires relay deployment.
 
 Verified: all six relay seat credentials, rejection of token spoofing, a native six-seat board and accepted setup move through the local Durable Object, and Windows embedded-Python imports under isolated Proton. Evidence is in `results/relay-test.json`, `results/native-relay-test.json`, and `results/windows-launcher-import-test.json`. These checks do not establish native Windows gameplay or deployed Internet connectivity. The native menu is captured in `results/native-menu-home.png`. Its loopback control API retains authentication and origin checks.
 
@@ -30,6 +30,7 @@ python3 scripts/test-friends-launcher.py
 .lab/sdk/dotnet run --project tools/steam-protocol-tests
 python3 scripts/safe-test.py python3 scripts/test-test-budget.py
 python3 scripts/safe-test.py python3 scripts/test-native-menu.py --dlc
+python3 scripts/safe-test.py python3 scripts/test-native-menu.py --ai
 python3 scripts/safe-test.py python3 scripts/test-dlc.py
 python3 scripts/safe-test.py python3 scripts/test-windows-exe.py
 python3 scripts/safe-test.py python3 scripts/test-steamworks.py
@@ -52,13 +53,17 @@ After committing and pushing a reviewed build, `python3 scripts/release-launcher
 
 ## DLC setup
 
-Choose **Host a game** to configure the match in Root. The host can play any human faction. Friend seats can use human factions or any of the four Clockwork bots, with a shared difficulty setting. Bot seats have no invitations and reject player connections.
+Choose **Host a game** to configure the match in Root. The host can play any standard faction. Each friend seat can be Human or ordinary AI at Easy, Medium, or Hard difficulty. Ordinary AI uses the normal rules for all ten factions, including expansion factions and either Vagabond. The four Clockwork factions remain separate choices with their own rules, shared Clockwork difficulty, and optional traits. AI and Clockwork seats have no invitations and reject player connections. Controller choices survive save recovery; resigned humans can still reconnect to watch. Version 0.3.0 reads older saves but writes version 2 checkpoints so older mods cannot misinterpret AI seats as human seats.
 
 The setup menu exposes Riverfolk, Underground Duchy, Corvid Conspiracy, Lord of the Hundreds, Keepers in Iron, a second Vagabond, all nine Vagabond characters, four maps, both decks, six landmarks, and all thirteen hireling families available in this build. Hirelings use their demoted sides at six players. Native faction/hireling exclusions are enforced. Lake includes the Ferry and Mountain includes the Tower; up to two additional landmarks can be selected. Advanced setup uses the chosen factions without a draft.
 
 Public settings travel with the private match so guests load the chosen board. Saved native initialization preserves the settings and bot seats. Private seat identities follow the chosen factions even when the native engine exchanges the two Vagabond assignments. Clockwork bots use the shared native AI evaluators for expansion interactions, including returning destroyed Badger relics. Clockwork supports all four optional traits per bot and the native Tinker, Thief, and Ranger Vagabot characters. Cosmetic DLC uses the game's existing settings. Ownership verification remains deferred; entitlement checks are unchanged.
 
-The DLC regression matrix passes 14 scenarios with 1,679 accepted decisions, including recovery checks for Clockwork settings and paired Vagabond characters. These runs cover setup and sampled turns, not every possible expansion interaction.
+The original DLC regression matrix covered 14 scenarios with 1,679 accepted decisions, including recovery checks for Clockwork settings and paired Vagabond characters. Seven ordinary-AI cases passed with 718 accepted human decisions plus native AI turns. They cover all ten faction evaluators, individual difficulties, mixed Clockwork games, paired human/AI Vagabonds, and a human with five AI opponents. Every AI case passed recovery; three games reached native victories, including hosting as the second Vagabond while AI controlled the first. These runs cover setup, turns, and recovery, not every possible expansion interaction.
+
+## Remaining setup parity
+
+Ordinary AI, faction selection, maps, decks, Vagabond characters, Clockwork traits, landmarks, and hirelings are exposed in the six-seat menu. Full parity with ordinary Root is not complete: advanced faction drafting, randomized factions and clearing suits, shuffled turn order, turn timers, Clockwork co-op, and the Bluff option are not exposed. Advanced setup currently uses chosen factions, turn order follows the selected seats, and timers are disabled. Chat is also absent. These features need native rules, UI, and recovery support.
 
 ## What works
 

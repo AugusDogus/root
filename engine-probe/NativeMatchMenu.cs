@@ -32,6 +32,10 @@ internal sealed class NativeMatchMenu
             view.Notice("Action needs attention", notice);
         }
         if (client.GameOver && client.Standings.Length == 6 && view.IsPlaying && !resultsShown) { resultsShown = true; Results(); }
+        // Keep the pressed button alive through release and Unity's click event.
+        // Readiness can change while the player is already pressing another control.
+        if (view.Screen == "match" && UnityEngine.Input.anyKey)
+            refreshAt = Math.Max(refreshAt, now + 0.3f);
         if (view.Screen == "match" && now >= refreshAt)
         {
             refreshAt = now + 2;

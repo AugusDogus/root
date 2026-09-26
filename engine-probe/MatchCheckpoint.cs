@@ -19,7 +19,7 @@ internal static class MatchCheckpoint
         if (new FileInfo(path).Length > MaximumBytes)
             throw new InvalidDataException("Checkpoint exceeds 64 MiB. The file was not changed.");
         var document = JsonSerializer.Deserialize<Document>(File.ReadAllText(path));
-        if (document is null || document.Version != 1 || document.Build != GameBuild ||
+        if (document is null || document.Version is not (1 or 2) || document.Build != GameBuild ||
             document.Initialization.ValueKind != JsonValueKind.Object || document.CompletionMessages?.Length != 6)
             throw new InvalidDataException("Checkpoint format or game build is incompatible. The file was not changed.");
         dwd.core.data.ReflectionTypeInitializer.Initialize();
@@ -72,7 +72,8 @@ internal static class MatchCheckpoint
         init.saveData = host.Match.SaveData;
         init.currentTurnPlayer = host.Match.ActiveAccountID;
         using var native = JsonDocument.Parse(JSON.ToJSON(init, false));
-        var checkpoint = new Document(1, GameBuild, native.RootElement, host.CompletionMessages);
+        // Older mods cannot distinguish configured AI seats from resigned humans.
+        var checkpoint = new Document(2, GameBuild, native.RootElement, host.CompletionMessages);
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (directory is null) throw new InvalidDataException("Checkpoint path has no directory.");
         Directory.CreateDirectory(directory);

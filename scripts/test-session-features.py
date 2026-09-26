@@ -65,6 +65,12 @@ def main():
                     assert latest_selection(request(seat, {'op': 'join'})) is None, 'Resigned spectator received a playable choice'
                     assert request(seat, choose(selection, rng, undo))['error'] == 'SeatResigned'
                     game.close()
+                    # The pre-AI release used this same native save shape with
+                    # version 1 and no configured-AI seat metadata.
+                    legacy = json.loads(save.read_text())
+                    assert legacy['Version'] == 2
+                    legacy['Version'] = 1
+                    save.write_text(json.dumps(legacy))
                     game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=save, resume=True)
                     endpoint = game.endpoint()
                     restored = request(0, {'op': 'join'})
@@ -79,7 +85,7 @@ def main():
                     spectator_cursor = spectator['next']
                     assert all(latest_selection({'messages': [message]}) is None for message in spectator['messages']), 'Spectator received a live playable choice'
                 assert request(seat, choose(selection, rng, undo)) == {'ok': True}
-            result = {'status': 'passed', 'decisions': step, 'readiness': True, 'resignation': True, 'resignedSeatRecovery': True}
+            result = {'status': 'passed', 'decisions': step, 'readiness': True, 'resignation': True, 'resignedSeatRecovery': True, 'legacySaveRecovery': True}
             (PROJECT / 'results/session-features-test.json').write_text(json.dumps(result))
             print(json.dumps(result), flush=True)
         except Exception:

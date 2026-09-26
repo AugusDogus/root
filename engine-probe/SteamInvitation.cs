@@ -6,7 +6,7 @@ namespace RootEngineProbe;
 // Only targeted invitations carry bearer tokens. Never publish these in rich presence.
 internal sealed record SteamInvitation(ulong Host, int Port, int Seat, string Token)
 {
-    public const string Prefix = "root6:2:22238765:";
+    public const string Prefix = "root6:3:22238765:";
     public string Encode() => $"{Prefix}{Host}:{Port}:{Seat}:{Token}";
 
     public static bool TryParse(string? text, out SteamInvitation? invitation)

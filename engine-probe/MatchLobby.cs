@@ -16,7 +16,7 @@ internal sealed class MatchLobby
         var seats = value.Deserialize<SeatStatus[]>() ?? throw new InvalidDataException("The host returned an empty table roster.");
         for (var index = 0; index < seats.Length; index++)
             if (seats[index] is not { } seat || seat.Seat != index + 1 || seat.Name is null || seat.Name.Length > 160 || seat.Name.Any(char.IsControl) ||
-                seat.State is not ("Waiting" or "Connected" or "Disconnected" or "Clockwork bot" or "Resigned"))
+                seat.State is not ("Waiting" or "Connected" or "Disconnected" or "Clockwork bot" or "AI · Easy" or "AI · Medium" or "AI · Hard" or "Resigned"))
                 throw new InvalidDataException("The host returned invalid seat details. Rejoin using the same mod release as the host.");
         return seats;
     }
@@ -28,9 +28,10 @@ internal sealed class MatchLobby
     }
     public void Touch(int seat) => seen[seat] = DateTime.UtcNow;
     public void SetReady(int seat, bool value) { ready[seat] = value; Touch(seat); }
-    public SeatStatus[] Status(int[] factions, Func<int, bool> resigned) => Enumerable.Range(0, 6).Select(seat =>
-        new SeatStatus(seat + 1, MatchSetup.FactionName(factions[seat]) + (string.IsNullOrEmpty(names[seat]) ? "" : $": {names[seat]}"),
-            MatchSetup.IsBot(factions[seat]) ? "Clockwork bot" : resigned(seat) ? "Resigned"
+    public SeatStatus[] Status(MatchSetup setup, Func<int, bool> resigned) => Enumerable.Range(0, 6).Select(seat =>
+        new SeatStatus(seat + 1, MatchSetup.FactionName(setup.Factions[seat]) + (string.IsNullOrEmpty(names[seat]) ? "" : $": {names[seat]}"),
+            MatchSetup.IsClockwork(setup.Factions[seat]) ? "Clockwork bot"
+            : setup.AI[seat] is { } difficulty ? $"AI · {difficulty}" : resigned(seat) ? "Resigned"
             : seen[seat] == default ? "Waiting" : DateTime.UtcNow - seen[seat] > TimeSpan.FromSeconds(15) ? "Disconnected" : "Connected",
             ready[seat])).ToArray();
 }

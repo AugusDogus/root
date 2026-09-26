@@ -44,6 +44,7 @@ def display_environment(lab):
 def main():
     os.umask(0o077)
     dlc = '--dlc' in sys.argv
+    ai = '--ai' in sys.argv
     completed = Path(sys.argv[sys.argv.index('--completed') + 1]).resolve() if '--completed' in sys.argv else None
     lab = PROJECT / ('.lab/friends-launcher-test' if dlc else '.lab/steam-game-probe')
     payload = PROJECT / 'launcher/payload'
@@ -83,7 +84,8 @@ def main():
                 subprocess.run(['xdotool', 'mousemove', str(x), str(y), 'sleep', '0.5',
                                 'mousedown', '1', 'sleep', '0.5', 'mouseup', '1'], env=env, check=True)
             def screen(name):
-                wait_for(lambda: healthy() and (lab / 'client/native-menu-screen').read_text() == name)
+                wait_for(lambda: healthy() and (lab / 'client/native-menu-screen').read_text() == name,
+                         seconds=240 if name in ('playing', 'results') else 30)
             capture('native-menu-home.png')
             print('Native menu visible.', flush=True)
             if '--completed-only' in sys.argv:
@@ -114,6 +116,13 @@ def main():
             click(180, 425)
             screen('setup')
             capture('native-menu-setup.png')
+            if ai:
+                for seat, (x, y) in enumerate(((920, 245), (300, 310), (920, 310), (920, 245)), start=2):
+                    click(520, 245 + seat * 70)
+                    screen('setup-options')
+                    click(x, y)
+                    screen('setup')
+                capture('native-menu-ai-setup.png')
             if dlc:
                 def setup_click(x, y):
                     click(x, y)
@@ -153,6 +162,10 @@ def main():
             wait_for(lambda: healthy() and 'Native match relay connected to the private host' in (lab / 'client/game/BepInEx/LogOutput.log').read_text())
             assert session.client is client, 'Hosting must reuse the open game.'
             screen('playing')
+            if ai:
+                actual = json.loads((lab / 'client/native-board-settings.json').read_text())
+                assert actual['setup']['AI'] == [None, None, 0, 1, 2, 0], actual['setup']
+                assert sum(bool(invite) for invite in session.invitations) == 1, 'Only the human friend seat should have an invitation'
             if dlc:
                 actual = json.loads((lab / 'client/native-board-settings.json').read_text())
                 assert actual['map'] == 2, actual
@@ -177,6 +190,12 @@ def main():
             click(490, 55)
             screen('match')
             capture('native-menu-table.png')
+            if ai:
+                from network import exchange
+                endpoint = session.endpoint
+                reply = json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': endpoint['tokens'][0]}).encode()))
+                assert [seat['State'] for seat in reply['lobby'][2:]] == ['AI · Easy', 'AI · Medium', 'AI · Hard', 'AI · Easy']
+                capture('native-menu-ai-table.png')
             click(240, 650)
             def ready():
                 from network import exchange
@@ -203,13 +222,13 @@ def main():
                 time.sleep(20)
                 capture('native-menu-results.png')
             result = {'status': 'passed', 'nativeMenu': True, 'hostFromGame': True,
-                      'gameProcessReused': True, 'sixNativePlayers': True, 'friendPickerOpened': True, 'steamInvitationsAvailable': 4 if dlc else 5,
+                      'gameProcessReused': True, 'sixNativePlayers': True, 'friendPickerOpened': True, 'steamInvitationsAvailable': 1 if ai else 4 if dlc else 5,
                       'invitationsSent': 0, 'browserOpened': False, 'headless': True,
                       'readiness': True, 'returnToMenu': True, 'savedMatchPreserved': True}
             result['completedMatchScreen'] = completed is not None
-            if dlc:
+            if dlc or ai:
                 result.update(actual)
-            (PROJECT / 'results' / ('native-dlc-menu-test.json' if dlc else 'native-menu-test.json')).write_text(json.dumps(result, indent=2) + '\n')
+            (PROJECT / 'results' / ('native-ai-menu-test.json' if ai else 'native-dlc-menu-test.json' if dlc else 'native-menu-test.json')).write_text(json.dumps(result, indent=2) + '\n')
             print(json.dumps(result), flush=True)
         finally:
             if session.worker is not None:

@@ -6,6 +6,14 @@ namespace RootEngineProbe;
 
 internal static class NativeMatchSetup
 {
+    private const string AISeatKey = "rootSixPlayer.aiSeat";
+
+    // Native HasResigned also returns true for seats created as ordinary AI.
+    // Keep original seat ownership in saved initialization metadata. Older
+    // saves have no marker and used humans for every non-Clockwork faction.
+    public static bool IsHumanSeat(TuberPlayerMatchInitData player) =>
+        !MatchSetup.IsClockwork((int)player.Faction) && !player.metadata.ContainsKey(AISeatKey);
+
     public static string? Validate(MatchSetup setup)
     {
         if (setup.Validate() is { } error) return error;
@@ -13,7 +21,7 @@ internal static class NativeMatchSetup
         foreach (var faction in factions)
         {
             var released = setup.Hirelings.Contains((int)faction) ? lib.data.FactionUtils.ReleasedHirelings
-                : MatchSetup.IsBot((int)faction) ? lib.data.FactionUtils.ClockworkFactions : lib.data.FactionUtils.ReleasedPlayerFactions;
+                : MatchSetup.IsClockwork((int)faction) ? lib.data.FactionUtils.ClockworkFactions : lib.data.FactionUtils.ReleasedPlayerFactions;
             if (!released.Contains(faction)) return $"{faction} is not available in this version of Root.";
             if (lib.data.FactionUtils.mutuallyExclusiveFactions.TryGetValue(faction, out var exclusions) && factions.Any(exclusions.Contains))
                 return $"{faction} conflicts with another selected faction or hireling. Choose a different combination.";
@@ -24,11 +32,13 @@ internal static class NativeMatchSetup
     public static TuberPlayerMatchInitData Player(string name, Canis.utils.ids.AccountID account, int seat, MatchSetup setup)
     {
         var faction = (Factions)setup.Factions[seat];
-        var player = MatchSetup.IsBot((int)faction) ? new TuberPlayerMatchInitData(2, account, name) : new TuberPlayerMatchInitData(name, account);
+        var player = setup.IsHumanSeat(seat) ? new TuberPlayerMatchInitData(name, account)
+            : new TuberPlayerMatchInitData((int)(setup.AI[seat] ?? AIDifficulty.Hard), account, name);
+        if (setup.AI[seat] is not null) player.metadata[AISeatKey] = "true";
         player.Faction = faction;
         player.PlayerStartingOrder = seat;
         player.StartingCharacter = (VagabondCharacters)setup.Characters[seat];
-        if (MatchSetup.IsBot((int)faction))
+        if (MatchSetup.IsClockwork((int)faction))
         {
             player.ClockworkConfig = new()
             {
@@ -61,6 +71,9 @@ internal static class NativeMatchSetup
     public static MatchSetup Read(TuberMatchInitData init, IReadOnlyList<TuberPlayerMatchInitData> seats) => new()
     {
         Factions = seats.Select(player => (int)player.Faction).ToArray(),
+        // Resigned humans retain their original seats for watching and reconnecting.
+        AI = seats.Select(player => IsHumanSeat(player) || MatchSetup.IsClockwork((int)player.Faction)
+            ? null : (AIDifficulty?)player.aiLevel).ToArray(),
         Characters = seats.Select(player => (int)player.StartingCharacter).ToArray(),
         Map = (int)init.ChosenMap, Deck = (int)init.ChosenDeck, AdvancedSetup = init.AdvancedSetup,
         BotDifficulty = ReadBotDifficulty(init),
@@ -76,7 +89,7 @@ internal static class NativeMatchSetup
         for (var seat = 0; seat < init.TuberPlayers.Count; seat++)
         {
             var player = init.TuberPlayers[seat];
-            if (!MatchSetup.IsBot((int)player.Faction) || player.ClockworkConfig?.difficulty is not { } difficulty) continue;
+            if (!MatchSetup.IsClockwork((int)player.Faction) || player.ClockworkConfig?.difficulty is not { } difficulty) continue;
             for (var level = 0; level < 4; level++)
                 if (lib.src.data.ClockworkConfigData.TranslateClockworkLeveltoArchID(new Il2CppSystem.Nullable<Factions>(player.Faction), (RootbotDifficulty)level).ToString() == difficulty.ToString())
                     return level;

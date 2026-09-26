@@ -15,7 +15,7 @@ LobbyTests.Run();
 var invite = new SteamInvitation(0x0110000100000001, 501, 6, new string('a', 32));
 Check(SteamInvitation.TryParse(invite.Encode(), out var decoded) && decoded == invite, "Invitation round trip");
 foreach (var text in new[] { invite.Encode() + "\n", invite.Encode().Replace("22238765", "0"),
-    invite.Encode().Replace("root6:2:", "root6:1:"),
+    invite.Encode().Replace("root6:3:", "root6:2:"),
     invite.Encode().Replace(":501:", ":0:"), invite.Encode().Replace(":6:", ":1:"),
     invite.Encode().Replace(invite.Host.ToString(), "1"), invite.Encode() + ":extra", "ordinary-root-invite" })
     Check(!SteamInvitation.TryParse(text, out _), "Malformed invitation accepted");

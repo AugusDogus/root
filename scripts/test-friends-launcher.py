@@ -192,7 +192,7 @@ class LauncherTests(unittest.TestCase):
                 config = json.loads((data / 'client/steam-config.json').read_text())
                 self.assertEqual(config, {'port': endpoint['port'], 'tokens': endpoint['tokens']})
                 self.assertNotIn('controlToken', config)
-                invite = f'root6:2:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
+                invite = f'root6:3:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
                 session = Session(data, payload, True)
                 session.perform('join', {'invite': invite})
                 self.assertEqual(launch.call_args.args[2], 'steam-client')
@@ -205,10 +205,10 @@ class LauncherTests(unittest.TestCase):
                     session.perform('host', {'transport': 'steam'})
 
     def test_steam_invitation_validation(self):
-        invite = f'root6:2:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
+        invite = f'root6:3:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
         self.assertEqual(validate_invite(invite), invite)
         for value in (invite + '\n', invite.replace(':501:', ':0:'), invite.replace(':6:', ':1:'),
-                      invite.replace(BUILD, '0'), invite + ':extra', invite.replace(str(0x0110000100000001), '1')):
+                      invite.replace(BUILD, '0'), invite.replace('root6:3:', 'root6:2:'), invite + ':extra', invite.replace(str(0x0110000100000001), '1')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_invite(value)
 

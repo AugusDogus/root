@@ -36,13 +36,14 @@ internal sealed class HostedMatch
     public MatchLobby Lobby { get; } = new();
     private Il2CppSystem.Threading.Tasks.Task? resignation;
     private readonly HashSet<int> aiSelections = new();
-    public void AdvanceResignedPlayers(Action<Il2CppSystem.Collections.IEnumerator> start)
+    public bool IsHumanSeat(int seat) => NativeMatchSetup.IsHumanSeat(SeatInitialization[seat]);
+    public void AdvanceAIPlayers(Action<Il2CppSystem.Collections.IEnumerator> start)
     {
         if (Resigning || Match.GameOverD) return;
         aiSelections.RemoveWhere(counter => !Thread.HasPendingResponse(counter));
         foreach (var player in SeatPlayers)
         {
-            if (!player.IsAI || !Match.HasResigned(player.AccountID)) continue;
+            if (!player.IsAI || player.IsClockwork()) continue;
             var counter = Thread.GetCounterForPlayerEntity(player);
             if (!Thread.HasPendingResponse(counter) || !aiSelections.Add(counter)) continue;
             // The private authority replaces the online server's AI scheduler.
@@ -89,7 +90,7 @@ internal sealed class HostedMatch
             messages.Add(completed);
             return messages.ToArray();
         }
-        if (Match.HasResigned(SeatInitialization[seat].accountID)) return messages.ToArray();
+        if (!IsHumanSeat(seat) || Match.HasResigned(SeatInitialization[seat].accountID)) return messages.ToArray();
         var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
         if (Thread.HasPendingResponse(counter))
         {
@@ -195,7 +196,7 @@ internal sealed class HostedMatch
 
     public SelectionOffer? GetOffer(int seat)
     {
-        if (Match.HasResigned(SeatInitialization[seat].accountID)) return null;
+        if (!IsHumanSeat(seat) || Match.HasResigned(SeatInitialization[seat].accountID)) return null;
         var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
         if (Thread.HasPendingResponse(counter) == false)
             return null;

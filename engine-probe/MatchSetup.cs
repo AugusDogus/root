@@ -2,11 +2,18 @@ using System.Text.Json;
 
 namespace RootEngineProbe;
 
+// Values match Root's native Easy / Medium / Hard difficulty levels.
+internal enum AIDifficulty { Easy = 0, Medium = 1, Hard = 2 }
+
 // Public match settings only. Never send a native checkpoint or private hands to clients.
 internal sealed record MatchSetup
 {
     public int[] Factions { get; init; } = { 0, 1, 2, 3, 6, 7 };
     public int[] Characters { get; init; } = new int[6];
+    // A null entry leaves the faction under its normal controller: a human
+    // for standard factions, or scripted automation for Clockwork factions.
+    public AIDifficulty?[] AI { get; init; } = new AIDifficulty?[6];
+    public bool IsHumanSeat(int seat) => !IsClockwork(Factions[seat]) && AI[seat] is null;
     public int Map { get; init; }
     public int Deck { get; init; }
     public int[] Landmarks { get; init; } = Array.Empty<int>();
@@ -43,7 +50,7 @@ internal sealed record MatchSetup
         (27, "Corvid Spies"), (28, "Sunward Expedition")
     };
     public static string FactionName(int id) => PlayerFactions.FirstOrDefault(item => item.Id == id).Name ?? $"Faction {id}";
-    public static bool IsBot(int id) => id is >= 10 and <= 13;
+    public static bool IsClockwork(int id) => id is >= 10 and <= 13;
     public static readonly string[] BotDifficulties = { "Easy", "Normal", "Challenging", "Nightmare" };
 
     public string? Validate()
@@ -51,12 +58,16 @@ internal sealed record MatchSetup
         if (Factions is null || Factions.Length != 6 || Factions.Distinct().Count() != 6 ||
             Factions.Any(id => !PlayerFactions.Any(item => item.Id == id)))
             return "Choose six different playable factions.";
-        if (IsBot(Factions[0])) return "The host must play a human faction. Use a friend seat for Clockwork bots.";
+        if (AI is null || AI.Length != 6 || AI.Any(level => level is { } value && !Enum.IsDefined(typeof(AIDifficulty), value)))
+            return "Choose Human or Easy, Medium, or Hard AI for each seat.";
+        if (Enumerable.Range(0, 6).Any(seat => IsClockwork(Factions[seat]) && AI[seat] is not null))
+            return "Clockwork factions use their own difficulty and traits. Choose a normal faction for ordinary AI.";
+        if (!IsHumanSeat(0)) return "The host must play a human faction. Use the other seats for AI or Clockwork.";
         if (BotDifficulty is < 0 or > 3) return "Choose a valid Clockwork difficulty.";
         if (VagabotCharacter is < 1 or > 3) return "Vagabot can use Tinker, Thief, or Ranger.";
         if (BotTraits is null || BotTraits.Length != 6 || BotTraits.Any(traits => traits is null || traits.Length > 4 || traits.Any(id => id is < 0 or > 3) || traits.Distinct().Count() != traits.Length))
             return "Choose up to four different traits for each Clockwork bot.";
-        if (Enumerable.Range(0, 6).Any(seat => !IsBot(Factions[seat]) && BotTraits[seat].Length > 0))
+        if (Enumerable.Range(0, 6).Any(seat => !IsClockwork(Factions[seat]) && BotTraits[seat].Length > 0))
             return "Only Clockwork bots can use Clockwork traits.";
         if (Factions.Contains(5) && !Factions.Contains(3)) return "A second Vagabond needs a first Vagabond.";
         if (Characters is null || Characters.Length != 6 || Characters.Any(id => id is < 0 or > 9))

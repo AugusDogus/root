@@ -46,7 +46,7 @@ internal static class LoopbackProbe
             {
                 yield return null;
                 var resigned = host.CompleteResignation();
-                host.AdvanceResignedPlayers(startAi);
+                host.AdvanceAIPlayers(startAi);
                 var currentCursor = host.Messages.Sum(history => history.Count);
                 if (checkpoint is not null && !host.Resigning && (resigned || savedCursor != currentCursor))
                 {
@@ -112,7 +112,7 @@ internal static class LoopbackProbe
 
     private static object Handle(HostedMatch host, int seat, string op, JsonElement request)
     {
-        if (MatchSetup.IsBot((int)host.SeatInitialization[seat].Faction)) return Error("BotSeat");
+        if (!host.IsHumanSeat(seat)) return Error("BotSeat");
         host.Lobby.Touch(seat);
         if (op == "join" && request.TryGetProperty("name", out var name))
         {
@@ -136,6 +136,7 @@ internal static class LoopbackProbe
                 reset = true;
                 batch = (host.Snapshot(seat), history.Count);
             }
+            var setup = NativeMatchSetup.Read(host.Match.TuberMatchInitData, host.SeatInitialization);
             return new
             {
                 ok = true,
@@ -147,7 +148,7 @@ internal static class LoopbackProbe
                 transitioning = host.Resigning,
                 winner = host.Match.WinnerExists ? host.Match.Winner.ToString() : null,
                 gameId = host.Match.TuberMatchInitData.gameID.ToString(),
-                setup = NativeMatchSetup.Read(host.Match.TuberMatchInitData, host.SeatInitialization),
+                setup,
                 roster = Enumerable.Range(0, host.PlayerCount).Select(i => new
                 {
                     account = host.SeatInitialization[i].accountID.ToString(),
@@ -156,7 +157,7 @@ internal static class LoopbackProbe
                 }).ToArray(),
                 next = batch.Next,
                 reset,
-                lobby = host.Lobby.Status(host.SeatInitialization.Select(player => (int)player.Faction).ToArray(),
+                lobby = host.Lobby.Status(setup,
                     index => host.Match.HasResigned(host.SeatInitialization[index].accountID)),
                 offer = host.GetOffer(seat),
                 messages = batch.Messages.Select(json => JsonSerializer.Deserialize<JsonElement>(json)).ToArray()

@@ -81,7 +81,7 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.2.0 · Friends' playtest", 28, 635, 410, 32, 18);
+        Text("Version 0.3.0 · Friends' playtest", 28, 635, 410, 32, 18);
         Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
@@ -165,7 +165,7 @@ internal sealed class NativeMenu
         for (var index = 0; index < 5; index++)
         {
             var seat = index + 2;
-            if (MatchSetup.IsBot(hostedSetup.Factions[seat - 1])) continue;
+            if (!hostedSetup.IsHumanSeat(seat - 1)) continue;
             Button(MatchSetup.FactionName(hostedSetup.Factions[seat - 1]), 380, 195 + index * 72, 520, 60, () => Friends(seat, friends(), 0));
         }
         Button("Back to game", 460, 675, 360, 60, Toolbar);

@@ -123,11 +123,11 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         var tokens = config.RootElement.GetProperty("tokens").Deserialize<string[]>() ?? throw new InvalidDataException("Missing host seats.");
         hostedSetup = config.RootElement.TryGetProperty("setup", out var settings) ? MatchSetup.Parse(settings.GetRawText()) : new();
         menu?.SetHostedSetup(hostedSetup);
-        host = new(ready, port, tokens, Enumerable.Range(2, 5).Where(seat => !MatchSetup.IsBot(hostedSetup.Factions[seat - 1])).ToArray(),
+        host = new(ready, port, tokens, Enumerable.Range(2, 5).Where(seat => hostedSetup.IsHumanSeat(seat - 1)).ToArray(),
             identity => invitations?.NameFor(identity) ?? "Steam friend");
         client = new(Path.Combine(lab, "connection.json")) { DisplayName = MatchLobby.CleanName(invitations?.NameFor(host.Identity) ?? "Host") };
         AttachControls();
-        var texts = new[] { "" }.Concat(Enumerable.Range(2, 5).Select(seat => MatchSetup.IsBot(hostedSetup.Factions[seat - 1]) ? "" : host.Invitation(seat).Encode())).ToArray();
+        var texts = new[] { "" }.Concat(Enumerable.Range(2, 5).Select(seat => hostedSetup.IsHumanSeat(seat - 1) ? host.Invitation(seat).Encode() : "")).ToArray();
         File.WriteAllText(Path.Combine(lab, "steam-status.json"), JsonSerializer.Serialize(new { invitations = texts }));
         message = "Steam host ready. Invite friends using the button below.";
     }
@@ -148,7 +148,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         if (client is not { } active) return;
         menu?.AttachMatch(active, () => active.Lobby.Select(seat =>
         {
-            if (host is null || seat.Seat == 1 || MatchSetup.IsBot(active.Setup.Factions[seat.Seat - 1])) return seat;
+            if (host is null || seat.Seat == 1 || !active.Setup.IsHumanSeat(seat.Seat - 1)) return seat;
             var owner = host.Owner(seat.Seat);
             return seat with {
                 State = seat.State == "Resigned" ? seat.State : host.Connected(seat.Seat) ? "Connected" : owner is null ? "Waiting" : "Disconnected" };

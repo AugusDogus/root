@@ -25,6 +25,15 @@ from recovery_checks import canonical
 BASE = [0, 1, 2, 3, 6, 7]
 MARAUDER = [14, 15, 8, 9, 6, 7]
 CASES = [
+    ('ai-base', {'Factions': [14, 15, 0, 1, 2, 3], 'AI': [None, None, 0, 1, 2, 1]}),
+    ('ai-expansions', {'Factions': [0, 1, 6, 7, 8, 9], 'AI': [None, None, 1, 2, 0, 1], 'Map': 2, 'Deck': 1}),
+    ('ai-marauder', {'Factions': [2, 3, 14, 15, 0, 1], 'AI': [None, None, 2, 1, 1, 0], 'Map': 3}),
+    ('ai-mixed', {'Factions': [14, 15, 10, 11, 2, 3], 'AI': [None, None, None, None, 0, 2]}),
+    ('ai-vagabonds', {'Factions': [0, 1, 2, 3, 5, 8], 'AI': [None, 0, 1, None, 2, 1],
+        'Characters': [0, 0, 0, 7, 8, 0], 'AdvancedSetup': True}),
+    ('ai-solo', {'Factions': BASE, 'AI': [None, 0, 1, 2, 1, 0]}),
+    ('ai-vagabond-host', {'Factions': [5, 0, 1, 2, 3, 8], 'AI': [None, 0, 1, 2, 2, 1],
+        'Characters': [8, 0, 0, 0, 7, 0]}),
     ('marauder', {'Factions': MARAUDER, 'Map': 2, 'Deck': 1}),
     ('clockwork', {'Factions': [14, 15, 10, 11, 12, 13], 'Map': 3}),
     *[(f'clockwork-traits-{character}', {'Factions': [14, 15, 10, 11, 12, 13], 'Map': 3,
@@ -45,7 +54,7 @@ def run_case(lab, name, setup):
     (lab / 'host/results/server/pending.json').unlink(missing_ok=True)
     (lab / 'host/match-setup.json').write_text(json.dumps(setup))
     scratch = tempfile.TemporaryDirectory(prefix='dlc-recovery-', dir=lab)
-    checkpoint = Path(scratch.name) / 'checkpoint.json' if name.startswith('clockwork') or name == 'vagabond-pair-1' else None
+    checkpoint = Path(scratch.name) / 'checkpoint.json' if name.startswith(('clockwork', 'ai-')) or name == 'vagabond-pair-1' else None
     game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=checkpoint, test_seed=seed)
     endpoint = None
     report = {'name': name, 'status': 'failed', 'setup': setup, 'seed': seed}
@@ -56,36 +65,22 @@ def run_case(lab, name, setup):
         endpoint = game.endpoint()
         def request(seat, body):
             return json.loads(exchange(endpoint['port'], json.dumps({**body, 'token': endpoint['tokens'][seat]}).encode()))
-        humans = [seat for seat, faction in enumerate(setup['Factions']) if not 10 <= faction <= 13]
+        humans = [seat for seat, faction in enumerate(setup['Factions']) if not 10 <= faction <= 13 and setup.get('AI', [None] * 6)[seat] is None]
         for seat in set(range(6)) - set(humans):
-            assert request(seat, {'op': 'join'}) == {'ok': False, 'error': 'BotSeat'}
+            response = request(seat, {'op': 'join'})
+            assert response == {'ok': False, 'error': 'BotSeat'}, f"AI seat {seat + 1}: ok={response.get('ok')}, error={response.get('error')}"
         rng = random.Random(12345)
         undo_ids = set()
         cursors = {seat: 0 for seat in humans}
         selections = {seat: None for seat in humans}
         for step in range(400):
+            if step and step % 40 == 0:
+                print(f'{name}: {step} human decisions accepted', flush=True)
             replies = {seat: request(seat, {'op': 'join'} if step == 0 else {'op': 'poll', 'after': cursors[seat]}) for seat in humans}
             assert all(reply['ok'] for reply in replies.values()), replies
             for seat, reply in replies.items():
                 cursors[seat] = reply['next']
                 selections[seat] = latest_selection(reply, selections[seat])
-            if step == 60 and checkpoint is not None:
-                snapshots = {seat: request(seat, {'op': 'join'}) for seat in humans}
-                old_endpoint = endpoint
-                game.close()
-                game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=checkpoint, resume=True)
-                endpoint = game.endpoint()
-                for seat in humans:
-                    restored = request(seat, {'op': 'join'})
-                    assert restored['setup'] == replies[seat]['setup'], 'Saved DLC settings changed'
-                    assert restored['roster'] == replies[seat]['roster'], 'Saved factions changed'
-                    assert canonical(restored['messages']) == canonical(snapshots[seat]['messages']), f'Seat {seat + 1} changed after recovery'
-                    cursors[seat] = restored['next']
-                    selections[seat] = latest_selection(restored)
-                    assert json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': old_endpoint['tokens'][seat]}).encode())) == {'ok': False, 'error': 'Unauthorized'}
-                for seat in set(range(6)) - set(humans):
-                    assert request(seat, {'op': 'join'}) == {'ok': False, 'error': 'BotSeat'}
-                report['recovery'] = 'Settings, bot seats, human snapshots and pending decisions preserved; old tokens rejected'
             latest = replies[humans[0]]
             assert [item['faction'] for item in latest['roster']] == setup['Factions']
             assert latest['setup']['Map'] == setup.get('Map', 0)
@@ -93,6 +88,10 @@ def run_case(lab, name, setup):
             assert set(latest['setup']['Hirelings']) == set(setup.get('Hirelings', []))
             assert set(latest['setup']['Landmarks']) == set(setup.get('Landmarks', []))
             assert latest['setup']['Characters'] == setup.get('Characters', [0] * 6)
+            assert latest['setup']['AI'] == setup.get('AI', [None] * 6)
+            for seat, difficulty in enumerate(setup.get('AI', [None] * 6)):
+                if difficulty is not None:
+                    assert latest['lobby'][seat]['State'] == 'AI · ' + ['Easy', 'Medium', 'Hard'][difficulty]
             assert latest['setup']['BotTraits'] == setup.get('BotTraits', [[] for _ in range(6)])
             assert latest['setup']['VagabotCharacter'] == setup.get('VagabotCharacter', 1)
             if (name != 'clockwork' and step >= 120 and all(decisions_by_seat[seat] >= 3 for seat in humans)) or latest['gameOver']:
@@ -115,6 +114,26 @@ def run_case(lab, name, setup):
                 break
             if not active:
                 raise RuntimeError('No human selection or game end after waiting 30 seconds for native AI')
+            if step >= (15 if name.startswith('ai-') else 60) and checkpoint is not None and 'recovery' not in report:
+                assert json.loads(checkpoint.read_text())['Version'] == 2, 'New saves must reject older mods without AI seat ownership'
+                snapshots = {seat: request(seat, {'op': 'join'}) for seat in humans}
+                # Snapshot only at a pending human choice, after native AI has settled.
+                old_endpoint = endpoint
+                game.close()
+                game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=checkpoint, resume=True)
+                endpoint = game.endpoint()
+                for seat in humans:
+                    restored = request(seat, {'op': 'join'})
+                    assert restored['setup'] == replies[seat]['setup'], 'Saved DLC settings changed'
+                    assert restored['roster'] == replies[seat]['roster'], 'Saved factions changed'
+                    assert canonical(restored['messages']) == canonical(snapshots[seat]['messages']), f'Seat {seat + 1} changed after recovery'
+                    cursors[seat] = restored['next']
+                    selections[seat] = latest_selection(restored)
+                    assert json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': old_endpoint['tokens'][seat]}).encode())) == {'ok': False, 'error': 'Unauthorized'}
+                for seat in set(range(6)) - set(humans):
+                    assert request(seat, {'op': 'join'}) == {'ok': False, 'error': 'BotSeat'}
+                report['recovery'] = 'Settings, bot seats, human snapshots and pending decisions preserved; old tokens rejected'
+                active = [(seat, selection) for seat, selection in selections.items() if selection is not None]
             seat, selection = active[0]
             prompt = selection['value']['prompt']['id']
             prompts[prompt] += 1

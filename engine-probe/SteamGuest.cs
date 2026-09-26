@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace RootEngineProbe;
 
 // Main-thread transport. PrivateClient never replays requests after an uncertain failure.
-internal sealed class SteamGuest : IDisposable
+internal sealed class SteamGuest : IMatchConnection
 {
     private readonly SteamSockets sockets;
     private readonly SteamInvitation invitation;

@@ -18,6 +18,50 @@ internal static class SelectionValidationProbe
         try
         {
             var ids = Enumerable.Range(0, 3).Select(_ => new EntityID(Guid.NewGuid().ToString())).ToArray();
+            var attributed = new CustomChoiceWithAttributesTargetInformation
+            {
+                Choices = new[] { new Canis.attributes.SerializableAttributes(), new Canis.attributes.SerializableAttributes() },
+                NumberToSelect = 1, MinimumToSelect = 1, Forced = true
+            };
+            for (var index = -1; index <= 2; index++)
+            {
+                var expected = index is 0 or 1;
+                if (expected)
+                {
+                    var following = new Il2CppSystem.Collections.Generic.List<TargetInformation>();
+                    var node = new CustomChoiceWithAttributesTargetInfoNode(null, attributed, false, null, null,
+                        following.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetInformation>>(), "probe");
+                    node.Select(index);
+                    if (!node.satisfied) failures.Add($"Native attributed choice {index} was not satisfied");
+                }
+                if ((new TargetChoice.Number(index).Validate(attributed) == ChoiceResult.Accepted) != expected)
+                    failures.Add($"Attributed choice {index} violated bounds");
+            }
+            var groups = new[]
+            {
+                new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[0], ids[1] } },
+                new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[2] } }
+            };
+            foreach (var forced in new[] { false, true })
+            for (var mask = 0; mask < 4; mask++)
+            {
+                var information = new EntityGroupingTargetInformation { ValidTargets = groups, NumberToSelect = 1, MinimumToSelect = 0, Forced = forced };
+                var following = new Il2CppSystem.Collections.Generic.List<TargetInformation>();
+                var node = new tc.selection.EntityGroupingTargetNode(null, information, false, null, null,
+                    following.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetInformation>>(), "probe");
+                var available = true;
+                for (var index = 0; index < groups.Length; index++)
+                    if ((mask & (1 << index)) != 0)
+                    {
+                        if (!Enumerable.Range(0, node.Available.Count).Any(i => node.Available[i].Pointer == groups[index].Pointer)) { available = false; break; }
+                        node.Select(groups[index]);
+                    }
+                var chosen = groups.Where((_, index) => (mask & (1 << index)) != 0).SelectMany(group => group.Items.Select(id => id.ToString())).ToArray();
+                var actual = new TargetChoice.Entities(chosen).Validate(information);
+                if ((actual == ChoiceResult.Accepted) != (available && node.satisfied)) failures.Add($"Grouping forced={forced} mask={mask}: native={available && node.satisfied}, host={actual}");
+                if (new TargetChoice.Entities(new[] { ids[0].ToString() }).Validate(information) != ChoiceResult.InvalidTarget)
+                    failures.Add("Grouping accepted a partial group");
+            }
             var recruit = new EntityListTargetInformation
             {
                 ValidTargets = new[] { ids[0], ids[0], ids[1] }, NumberToSelect = 2, MinimumToSelect = 2, Forced = true

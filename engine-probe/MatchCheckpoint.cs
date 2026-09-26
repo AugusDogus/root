@@ -60,6 +60,14 @@ internal static class MatchCheckpoint
         // The native clone assumes optional lists are initialized. JSON preserves
         // the actual initialization, including absent optional expansion lists.
         var init = JSON.Deserialize<TuberMatchInitData>(host.CheckpointInitialization);
+        // Resignation changes native control to AI. The cached starting roster
+        // must not turn that faction back into a human seat when loading a save.
+        foreach (var savedPlayer in host.Match.SaveData.orderedPlayers)
+        {
+            var player = init.TuberPlayers.ToArray().Single(item => item.accountID.ToString() == savedPlayer.AccountID.ToString());
+            player.isHuman = savedPlayer.IsHuman;
+            player.aiLevel = savedPlayer.AILevel;
+        }
         init.gameState = state;
         init.saveData = host.Match.SaveData;
         init.currentTurnPlayer = host.Match.ActiveAccountID;

@@ -20,7 +20,7 @@ internal sealed class SteamInvitations : IDisposable
     private readonly Name name;
     private readonly Il2CppSystem.Action<Friend, string> callback;
 
-    public SteamInvitations(SteamNative api, Action<SteamInvitation> accepted)
+    public SteamInvitations(SteamNative api, Action<SteamInvitation> accepted, Action<string>? invalid = null)
     {
         if (!Dispatch.Callbacks.ContainsKey(CallbackType.GameRichPresenceJoinRequested) ||
             Dispatch.Callbacks[CallbackType.GameRichPresenceJoinRequested].Count == 0)
@@ -36,6 +36,8 @@ internal sealed class SteamInvitations : IDisposable
             {
                 if (SteamInvitation.TryParse(text, out var parsed) && parsed is { } value && value.Host == (ulong)sender.Id)
                     accepted(value);
+                else if (text.StartsWith("root6:", StringComparison.Ordinal))
+                    invalid?.Invoke("This invitation is invalid or uses a different mod version. Install the same release as your host and ask for a new invitation.");
             })) ?? throw new InvalidOperationException("Steam invitation callback could not be registered.");
         SteamFriends.OnGameRichPresenceJoinRequested = Il2CppSystem.Delegate.Combine(
             SteamFriends.OnGameRichPresenceJoinRequested, callback).Cast<Il2CppSystem.Action<Friend, string>>();
@@ -53,6 +55,7 @@ internal sealed class SteamInvitations : IDisposable
 
     public bool Send(ulong recipient, SteamInvitation invitation) =>
         recipient != 0 && SteamInvitation.TryParse(invitation.Encode(), out _) && invite(friends, recipient, invitation.Encode());
+    public string NameFor(ulong identity) => MatchLobby.CleanName(Marshal.PtrToStringUTF8(name(friends, identity)) ?? "Steam friend");
 
     // Exercise the actual converted IL2CPP delegate without contacting Steam friends.
     internal void SimulateAcceptance(ulong sender, string text) => callback.Invoke(new Friend(sender), text);

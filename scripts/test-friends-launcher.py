@@ -29,8 +29,8 @@ class LauncherTests(unittest.TestCase):
             payload = data / 'payload'
             payload.mkdir()
             (payload / 'EngineProbe.dll').write_bytes(b'new plugin')
-            previous = {'build': BUILD, 'version': VERSION, 'plugin_sha256': hashlib.sha256(b'old plugin').hexdigest()}
-            expected = {**previous, 'plugin_sha256': hashlib.sha256(b'new plugin').hexdigest()}
+            previous = {'build': BUILD, 'version': '0.1.0', 'plugin_sha256': hashlib.sha256(b'old plugin').hexdigest()}
+            expected = {**previous, 'version': VERSION, 'plugin_sha256': hashlib.sha256(b'new plugin').hexdigest()}
             (payload / 'manifest.json').write_text(json.dumps(expected))
             (data / 'prepared.json').write_text(json.dumps(previous))
             (data / 'saves').mkdir()
@@ -50,10 +50,35 @@ class LauncherTests(unittest.TestCase):
                     prepare(Mock(), data, payload, Mock())
                 self.assertEqual(plugins[0].read_bytes(), b'old plugin')
                 plugins[1].write_bytes(b'old plugin')
+                replace = Path.replace
+                def interrupt(path, target):
+                    if path == plugins[1].with_suffix('.update'):
+                        raise OSError('Interrupted update')
+                    return replace(path, target)
+                with patch.object(Path, 'replace', interrupt):
+                    with self.assertRaisesRegex(OSError, 'Interrupted update'):
+                        prepare(Mock(), data, payload, Mock())
+                self.assertTrue(all(plugin.read_bytes() == b'old plugin' for plugin in plugins))
+                self.assertEqual(json.loads((data / 'prepared.json').read_text()), previous)
                 prepare(Mock(), data, payload, Mock())
                 self.assertTrue(all(plugin.read_bytes() == b'new plugin' for plugin in plugins))
                 self.assertEqual(save.read_text(), 'saved match')
                 self.assertEqual(json.loads((data / 'prepared.json').read_text()), expected)
+
+    def test_return_to_menu_closes_old_session_before_opening_new_game(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = Session(Path(temp), Path(temp), True)
+            session.client = Mock()
+            order = []
+            with patch.object(session, 'stop', side_effect=lambda: order.append('stop')), patch('session.discover'), \
+                    patch('session.proton_paths'), patch.object(session, 'prepared', return_value=True), \
+                    patch('session.GameProcess', side_effect=lambda *args, **kwargs: order.append(args[2])):
+                for role in ('host', 'client'):
+                    (Path(temp) / role).mkdir()
+                    (Path(temp) / role / 'bindings-ready').touch()
+                (Path(temp) / 'prepared.json').write_text('{}')
+                session.perform('return-menu', {})
+            self.assertEqual(order, ['stop', 'steam-menu'])
 
     def test_native_host_reuses_game_and_keeps_shutdown_token_private(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -167,7 +192,7 @@ class LauncherTests(unittest.TestCase):
                 config = json.loads((data / 'client/steam-config.json').read_text())
                 self.assertEqual(config, {'port': endpoint['port'], 'tokens': endpoint['tokens']})
                 self.assertNotIn('controlToken', config)
-                invite = f'root6:1:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
+                invite = f'root6:2:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
                 session = Session(data, payload, True)
                 session.perform('join', {'invite': invite})
                 self.assertEqual(launch.call_args.args[2], 'steam-client')
@@ -180,7 +205,7 @@ class LauncherTests(unittest.TestCase):
                     session.perform('host', {'transport': 'steam'})
 
     def test_steam_invitation_validation(self):
-        invite = f'root6:1:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
+        invite = f'root6:2:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
         self.assertEqual(validate_invite(invite), invite)
         for value in (invite + '\n', invite.replace(':501:', ':0:'), invite.replace(':6:', ':1:'),
                       invite.replace(BUILD, '0'), invite + ':extra', invite.replace(str(0x0110000100000001), '1')):

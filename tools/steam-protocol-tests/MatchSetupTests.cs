@@ -30,5 +30,9 @@ internal static class MatchSetupTests
         Invalid(new() { Landmarks = new[] { 2, 3, 4 } });
         Invalid(new() { Map = 4 });
         Invalid(new() { Deck = 2 });
+        Valid(new() { Factions = new[] { 14, 15, 10, 11, 12, 13 }, VagabotCharacter = 3,
+            BotTraits = new[] { Array.Empty<int>(), Array.Empty<int>(), new[] { 0, 1, 2, 3 }, new[] { 0 }, new[] { 1 }, new[] { 2 } } });
+        Invalid(new() { VagabotCharacter = 4 });
+        Invalid(new() { BotTraits = new[] { new[] { 0 }, Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>() } });
     }
 }

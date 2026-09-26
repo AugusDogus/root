@@ -84,6 +84,8 @@ public sealed class ClientProbe : MonoBehaviour
             try { steamBridge?.Tick(); client.Update(elapsed); }
             catch (Exception error) { failed = true; Log.LogError($"Private client failed: {error}"); }
         }
+        if (elapsed > 35 && client?.ReceivedMessages > 0 && steamBridge is { Interrupted: false } bridge)
+            bridge.Interrupt();
         if (elapsed > 45 && client?.ReceivedMessages > 100 && fastForwarded == false)
         {
             var replay = UnityEngine.Object.FindObjectOfType<tuber.client.match.ui.SkipReplayButton>(true);
@@ -156,6 +158,7 @@ public sealed class ClientProbe : MonoBehaviour
         {
             var entities = UnityEngine.Object.FindObjectOfType<TuberEntitiesProvider>()?.TuberEntities;
             var passed = failed == false && entities?.allPlayers.Count == 6 && client?.AcceptedChoices == 1 &&
+                (steamBridge is null || steamBridge.Recovered) &&
                 submittedCounter is int previous && (client.Offer is null || client.Offer.Counter != previous);
             var output = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, "..", "results", "client-probe"));
             Directory.CreateDirectory(output);
@@ -165,6 +168,7 @@ public sealed class ClientProbe : MonoBehaviour
                 players = entities?.allPlayers.Count, submitted, received = client?.ReceivedMessages,
                 accepted = client?.AcceptedChoices, prompt = client?.Offer?.Prompt, counter = client?.Offer?.Counter,
                 submittedCounter, submittedPrompt, submittedTarget,
+                reconnected = steamBridge?.Recovered,
                 localAccount = entities?.GetActiveLocalPlayerID()?.ToString()
             }, new JsonSerializerOptions { WriteIndented = true }));
             finished = true;

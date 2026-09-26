@@ -96,7 +96,7 @@ def make_server(session: Session, token: str) -> ThreadingHTTPServer:
                 if not isinstance(values, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in values.items()):
                     raise ValueError('Expected text fields.')
                 action = self.path.removeprefix('/api/')
-                if self.path != f'/api/{action}' or action not in ('prepare', 'host', 'join', 'wait', 'resume', 'stop', 'quit', 'host-native', 'resume-native'):
+                if self.path != f'/api/{action}' or action not in ('prepare', 'host', 'join', 'wait', 'resume', 'stop', 'quit', 'host-native', 'resume-native', 'return-menu'):
                     raise ValueError('Unknown launcher action.')
                 if action == 'quit':
                     if session.busy or session.status()['active']:
@@ -148,8 +148,10 @@ def main():
                     control = data / 'client/launcher-control.json'
                     control.write_text(json.dumps({'port': server.server_port, 'token': token}))
                     session.perform('play', {})
-                    while session.client is not None and session.client.process.poll() is None:
+                    while session.busy or session.client is not None and session.client.process.poll() is None:
                         time.sleep(0.5)
+                    if session.error:
+                        raise RuntimeError(session.error)
                 finally:
                     server.shutdown()
                     thread.join()

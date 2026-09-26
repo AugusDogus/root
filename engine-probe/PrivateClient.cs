@@ -22,7 +22,7 @@ internal sealed class PrivateClient
     public static PrivateClient? Active { get; private set; }
     private readonly int port;
     private readonly string token;
-    private readonly Func<object, Task<JsonElement>> exchange;
+    private Func<object, Task<JsonElement>> exchange;
     private readonly Queue<object> outgoing = new();
     private readonly Queue<string> incoming = new();
     private Task<JsonElement>? pending;
@@ -33,10 +33,37 @@ internal sealed class PrivateClient
     private AccountID? account;
     private dwd.core.account.SerializableAccount? localAccount;
     private static dwd.core.account.SerializableAccount? accountForSnapshot;
+    private static bool patched;
     public int ReceivedMessages { get; private set; }
     public int Cursor => cursor;
     public int AcceptedChoices { get; private set; }
     public SelectionOffer? Offer { get; private set; }
+    public string? Notice { get; set; }
+    public bool GameOver { get; private set; }
+    public bool Transitioning { get; private set; }
+    public string? Winner { get; private set; }
+    public sealed record Standing(string Faction, int Score, bool Won, bool Dominance);
+    public Standing[] Standings { get; private set; } = Array.Empty<Standing>();
+    public MatchSetup Setup { get; private set; } = new();
+    public SeatStatus[] Lobby { get; private set; } = Array.Empty<SeatStatus>();
+    public int Seat { get; private set; }
+    public string DisplayName { get; set; } = "";
+    public void Ready(bool ready) => outgoing.Enqueue(new { op = "ready", token, ready });
+    public void Resign()
+    {
+        Transitioning = true;
+        outgoing.Enqueue(new { op = "resign", token });
+        outgoing.Enqueue(new { op = "join", token });
+    }
+    public void DiscardQueuedMoves() => outgoing.Clear();
+    public void ReplaceTransport(Func<object, Task<JsonElement>> transport)
+    {
+        if (pending is { } abandoned) _ = abandoned.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+        pending = null;
+        outgoing.Clear(); incoming.Clear();
+        exchange = transport;
+        outgoing.Enqueue(new { op = "join", token });
+    }
 
     public void Stop()
     {
@@ -63,6 +90,8 @@ internal sealed class PrivateClient
         this.token = token;
         exchange = transport ?? (request => Task.Run(() => Exchange(request)));
         Active = this;
+        if (patched) return;
+        patched = true;
         var harmony = new Harmony("local.root.privateclient");
         harmony.Patch(AccessTools.Method(typeof(boardgames.account.AccountExtensions), "ToSerializableAccount"),
             prefix: new HarmonyMethod(typeof(PrivateClient), nameof(ProvidePrivateAccount)));
@@ -82,9 +111,39 @@ internal sealed class PrivateClient
             var response = pending.GetAwaiter().GetResult();
             pending = null;
             if (response.GetProperty("ok").GetBoolean() == false)
-                throw new InvalidOperationException($"Private host rejected request: {response.GetProperty("error").GetString()}");
+            {
+                var code = response.GetProperty("error").GetString();
+                Log.LogWarning($"Private host rejected a request: {code}");
+                if (code is "Unauthorized" or "BotSeat") throw new InvalidDataException("This seat invitation is no longer valid. Ask the host for a new invitation.");
+                if (code == "SnapshotTooLarge") throw new InvalidDataException("This board is too large to synchronize with this mod version. The host's save is preserved. Keep it for a newer release.");
+                if (code is not ("NoSuchSelection" or "WrongPlayer" or "UnsupportedSelection" or "InvalidSource" or "InvalidTarget" or "EngineDidNotAdvance" or "InvalidSelection" or "InvalidCursor" or "MatchFinished" or "SeatResigned" or "ResignationFailed" or "MatchBusy"))
+                    throw new IOException("The host could not complete the request. Check Steam and ask the host to check its game. Saved moves remain on the host.");
+                outgoing.Clear();
+                Transitioning = false;
+                var detail = code switch
+                {
+                    "UnsupportedSelection" => "This kind of action is not supported by this release yet.",
+                    "MatchBusy" => "Root is still finishing a change to the table.",
+                    "SeatResigned" => "Root's AI now controls this resigned faction.",
+                    "MatchFinished" => "This match has finished.",
+                    "WrongPlayer" => "This decision belongs to another player.",
+                    _ => "The host could not accept that choice. The turn or available choices may have changed."
+                };
+                Notice = detail + " The board will refresh so you can check the current turn. If this blocks play, keep the save and report the action.";
+                outgoing.Enqueue(new { op = "join", token });
+                return;
+            }
             if (response.TryGetProperty("messages", out var messages))
             {
+                if (response.TryGetProperty("reset", out var reset) && reset.GetBoolean())
+                { outgoing.Clear(); incoming.Clear(); }
+                GameOver = response.GetProperty("gameOver").GetBoolean();
+                Transitioning = response.TryGetProperty("transitioning", out var transition) && transition.GetBoolean();
+                Winner = response.GetProperty("winner").GetString();
+                Lobby = response.TryGetProperty("lobby", out var lobby) ? MatchLobby.Parse(lobby) : Array.Empty<SeatStatus>();
+                if (Winner is { } winner)
+                    foreach (var player in response.GetProperty("roster").EnumerateArray())
+                        if (player.GetProperty("account").GetString() == winner) Winner = MatchSetup.FactionName(player.GetProperty("faction").GetInt32());
                 if (launched == false)
                     Launch(response);
                 foreach (var message in messages.EnumerateArray())
@@ -99,6 +158,14 @@ internal sealed class PrivateClient
             while (incoming.TryDequeue(out var json))
             {
                 var message = JSON.Deserialize<DWDEvent>(json);
+                if (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<tuber.canis.messages.GameResults>() is { } results)
+                {
+                    // Root's victory scene has only four player slots and leaves
+                    // the board. Keep the board and show our six-player standings.
+                    Standings = results.results.Select(entry => new Standing(MatchSetup.FactionName((int)entry.faction), entry.score, entry.didWin, entry.wasDominanceWin)).ToArray();
+                    ReceivedMessages++;
+                    continue;
+                }
                 var state = message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<Canis.messages.SerializedGameState>();
                 if (state is not null)
                 {
@@ -115,7 +182,7 @@ internal sealed class PrivateClient
             }
         if (pending is null && now >= nextPoll)
         {
-            var request = outgoing.TryDequeue(out var choice) ? choice : new { op = launched ? "poll" : "join", token, after = cursor };
+            var request = outgoing.TryDequeue(out var choice) ? choice : new { op = launched ? "poll" : "join", token, after = cursor, name = DisplayName };
             pending = exchange(request);
             nextPoll = now + 0.25f;
         }
@@ -151,8 +218,10 @@ internal sealed class PrivateClient
         // The board scene and expansion controls are chosen before snapshots arrive.
         // Forward only public settings, never the host's initialization/checkpoint.
         var setup = response.TryGetProperty("setup", out var settings) ? MatchSetup.Parse(settings.GetRawText()) : null;
+        Setup = setup ?? new();
         if (setup is not null) NativeMatchSetup.Apply(init, setup);
         var seat = response.GetProperty("seat").GetInt32();
+        Seat = seat + 1;
         var index = 0;
         foreach (var player in response.GetProperty("roster").EnumerateArray())
         {
@@ -207,6 +276,9 @@ internal sealed class PrivateClient
     private static bool SendChoice(Il2CppSystem.Object __0)
     {
         if (Active is not { } client) return false;
+        // Root requests chat history automatically when opening the board.
+        // Chat is outside this protocol; this read is not a failed player move.
+        if (__0.TryCast<Canis.game.messages.chat.GetGameChat>() is not null) return false;
         if (__0.TryCast<tuber.canis.messages.ChosenRiverfolkPrices>() is { } prices)
         {
             client.outgoing.Enqueue(new { op = "prices", client.token, counter = prices.counter,
@@ -232,7 +304,7 @@ internal sealed class PrivateClient
                     choices.Add(new TargetChoice.Number(number.Amount));
                 else
                 {
-                    Log.LogWarning($"Unsupported target response: {target.GetIl2CppType().FullName}");
+                    client.Unsupported(target.GetIl2CppType().FullName);
                     return false;
                 }
             }
@@ -254,8 +326,16 @@ internal sealed class PrivateClient
                 Log.LogInfo($"Sending native custom choice {counterNumber} to the private host");
             }
             else
-                Log.LogWarning($"Private transport does not yet support {__0.GetIl2CppType().FullName}");
+                client.Unsupported(__0.GetIl2CppType().FullName);
         }
         return false;
+    }
+
+    private void Unsupported(string kind)
+    {
+        Log.LogWarning($"Unsupported private action: {kind}");
+        Notice = "This action is not supported by this release yet. No move was sent. The board will refresh. If this blocks your turn, keep the save and report which action you selected.";
+        outgoing.Clear();
+        outgoing.Enqueue(new { op = "join", token });
     }
 }

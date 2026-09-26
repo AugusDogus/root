@@ -9,9 +9,13 @@ void Reject(Action action, string detail)
     throw new Exception(detail);
 }
 MatchSetupTests.Run();
+SeatHistoryTests.Run();
+RecoveryTests.Run();
+LobbyTests.Run();
 var invite = new SteamInvitation(0x0110000100000001, 501, 6, new string('a', 32));
 Check(SteamInvitation.TryParse(invite.Encode(), out var decoded) && decoded == invite, "Invitation round trip");
 foreach (var text in new[] { invite.Encode() + "\n", invite.Encode().Replace("22238765", "0"),
+    invite.Encode().Replace("root6:2:", "root6:1:"),
     invite.Encode().Replace(":501:", ":0:"), invite.Encode().Replace(":6:", ":1:"),
     invite.Encode().Replace(invite.Host.ToString(), "1"), invite.Encode() + ":extra", "ordinary-root-invite" })
     Check(!SteamInvitation.TryParse(text, out _), "Malformed invitation accepted");
@@ -41,4 +45,4 @@ var tooLarge = (byte[])first.Clone();
 BinaryPrimitives.WriteInt32LittleEndian(tooLarge.AsSpan(8), int.MaxValue);
 Reject(() => new SteamFrames.Reader(SteamFrames.MaxRequest).Push(tooLarge), "Oversized allocation accepted");
 Reject(() => new SteamFrames.Reader(SteamFrames.MaxRequest).Push(new byte[16]), "Empty frame accepted");
-Console.WriteLine("PASS: DLC setup validation, invitation validation, 4 MiB framing, gaps, duplicates, mixed IDs, bounded allocations");
+Console.WriteLine("PASS: DLC settings, versioned invitations, bounded history, recovery without move replay, and 4 MiB framing");

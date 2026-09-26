@@ -8,6 +8,7 @@ import shutil
 import urllib.request
 import zipfile
 from windows_launcher import build_windows
+from steam import BUILD, VERSION
 
 PROJECT = Path(__file__).resolve().parents[1]
 SOURCE = PROJECT / 'launcher'
@@ -41,7 +42,7 @@ def main():
     payload = SOURCE / 'payload'
     payload.mkdir(exist_ok=True)
     shutil.copy2(plugin, payload / plugin.name)
-    (payload / 'manifest.json').write_text(json.dumps({'build': '22238765', 'version': '0.1.0',
+    (payload / 'manifest.json').write_text(json.dumps({'build': BUILD, 'version': VERSION,
         'plugin_sha256': hashlib.sha256(plugin.read_bytes()).hexdigest()}))
     python_zip = CACHE / 'python-3.12.10-embed-amd64.zip'
     if not python_zip.exists():
@@ -62,7 +63,7 @@ def main():
               file.relative_to(SOURCE).parts[0] in ('web', 'payload', 'vendor')) and
              file.suffix not in ('.pyc', '.pyo', '.md')]
     for platform in ('windows', 'linux'):
-        target = DIST / f'root-six-player-0.1.0-{platform}.zip'
+        target = DIST / f'root-six-player-{VERSION}-{platform}.zip'
         with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
             if platform == 'windows':
                 archive.write(executable, 'Root Six Player.exe')
@@ -78,7 +79,7 @@ def main():
                                                         'endpoint.json', 'steam-config.json', 'steam-status.json', 'checkpoint')):
                     raise ValueError(f'Forbidden game or private file in package: {name}')
         print(f'{target}: {target.stat().st_size / 1024**2:.1f} MiB')
-    outputs = [DIST / 'Root Six Player.exe', *sorted(DIST.glob('root-six-player-0.1.0-*.zip'))]
+    outputs = [DIST / 'Root Six Player.exe', *sorted(DIST.glob(f'root-six-player-{VERSION}-*.zip'))]
     (DIST / 'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}\n'
                                          for file in outputs))
 

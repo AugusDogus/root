@@ -17,11 +17,11 @@ bash scripts/build-probe.sh
 python3 scripts/safe-test.py python3 scripts/package-launcher.py
 ```
 
-Outputs are `dist/root-six-player-0.1.0-windows.zip` and `dist/root-six-player-0.1.0-linux.zip`. Windows ships a standalone `Root Six Player.exe`, also available directly in `dist`. Linux requires Python 3.10+ and uses `Play.sh`. Neither package contains Root files or a Markdown guide. The launcher opens Root directly; Host, Join friends, Resume and invitations use an in-game menu built from Root's own fonts and sprites. First-time preparation is automatic. The browser controls are available only with --browser for development. Preparation generates host and client bindings in separate processes to limit peak memory. Steam mode needs no relay deployment. Friends open **Join friends** before accepting an invite. Steam launches ordinary Root if the mod is closed. The development browser controls also support pasted private seat invitations. Cloudflare mode still requires relay deployment.
+Outputs are `dist/root-six-player-0.2.0-windows.zip` and `dist/root-six-player-0.2.0-linux.zip`. Windows ships a standalone `Root Six Player.exe`, also available directly in `dist`. Linux requires Python 3.10+ and uses `Play.sh`. Neither package contains Root files or a Markdown guide. The launcher opens Root directly; Host, Join friends, Resume and invitations use an in-game menu built from Root's own fonts and sprites. First-time preparation is automatic. The browser controls are available only with --browser for development. Preparation generates host and client bindings in separate processes to limit peak memory. Steam mode needs no relay deployment. Friends open **Join friends** before accepting an invite. Steam launches ordinary Root if the mod is closed. The development browser controls also support pasted private seat invitations. Cloudflare mode still requires relay deployment.
 
 Verified: all six relay seat credentials, rejection of token spoofing, a native six-seat board and accepted setup move through the local Durable Object, and Windows embedded-Python imports under isolated Proton. Evidence is in `results/relay-test.json`, `results/native-relay-test.json`, and `results/windows-launcher-import-test.json`. These checks do not establish native Windows gameplay or deployed Internet connectivity. The native menu is captured in `results/native-menu-home.png`. Its loopback control API retains authentication and origin checks.
 
-Steam transport checks: `results/steamworks-probe.json` records five logical guests in one signed-in Steam process, ten nearly 4 MiB responses, simulated invitation callbacks, and rejection of invalid tokens, duplicate seats, and seat switching. The native board regression in `results/native-steam-test.json` also rendered six factions and accepted a Riverfolk placement over Steam P2P. These checks do not establish cross-account routing or real invitation delivery.
+Steam transport checks: `results/steamworks-probe.json` records five logical guests in one signed-in Steam process, ten nearly 4 MiB responses, simulated invitation callbacks, and rejection of invalid tokens, duplicate seats, and seat switching. It also verifies reassignment, rejection of the previous invitation, and refusal to release a connected seat. The native board regression in `results/native-steam-test.json` rendered six factions, recovered after forcibly closing the Steam connection, and accepted a Riverfolk placement over Steam P2P. These checks do not establish cross-account routing or real invitation delivery.
 
 Launcher checks:
 
@@ -33,11 +33,22 @@ python3 scripts/safe-test.py python3 scripts/test-native-menu.py --dlc
 python3 scripts/safe-test.py python3 scripts/test-dlc.py
 python3 scripts/safe-test.py python3 scripts/test-windows-exe.py
 python3 scripts/safe-test.py python3 scripts/test-steamworks.py
+python3 scripts/safe-test.py python3 scripts/test-session-features.py
 ```
 
 Run game tests and Windows packaging through `scripts/safe-test.py`. It holds a shared exclusive lock and uses one fixed systemd user service with a 4 GiB total RAM cap, 3 GiB memory throttle, no swap, 150% CPU quota, and low CPU/I/O priority. It requires 12 GiB available RAM before starting and stops the job if available RAM drops below the 8 GiB desktop reserve. Headless launcher and Windows build adapters reject launches outside this service. Child Wine and Xvfb processes are removed when the service exits. The reserve cannot prevent unrelated software from exhausting memory, but the test workload stays bounded.
 
 The native DLC menu test uses its own `.lab/friends-launcher-test` copies and prefixes. Only open visible player mode when requested. The remaining commands below are the original development tools; wrap native runs with the same constrained runner. Six simultaneous graphical clients exceed the current budget and are deferred.
+
+## Match controls and updates
+
+The **Match** button shows seat presence and readiness. Ready indicators are informational; they do not pause turns. Hosts can explicitly reassign disconnected seats, which invalidates the old invitation. A pending move must finish before reassignment. Steam guests recover from temporary connection loss without repeating moves.
+
+**Resign** hands the faction to Root's native AI and lets the player watch. Resignation survives checkpoint recovery. **Return to menu** closes the current game session and opens the launcher menu again. For hosts, this disconnects guests and keeps the saved match. The completion screen identifies the winner and lets players inspect the final board or return to the menu.
+
+Close the game before updating, then open the new launcher. It replaces only recognized mod files, rolls back failed updates, and preserves saves and the Steam installation. Everyone must use the same release. **Get updates** opens the repository's releases page; private downloads require repository access.
+
+After committing and pushing a reviewed build, `python3 scripts/release-launcher.py` verifies package checksums and uploads a draft prerelease. It uploads only the Windows EXE, the two player ZIPs, and checksums. It does not publish the draft or include game files.
 
 ## DLC setup
 
@@ -45,7 +56,9 @@ Choose **Host a game** to configure the match in Root. The host can play any hum
 
 The setup menu exposes Riverfolk, Underground Duchy, Corvid Conspiracy, Lord of the Hundreds, Keepers in Iron, a second Vagabond, all nine Vagabond characters, four maps, both decks, six landmarks, and all thirteen hireling families available in this build. Hirelings use their demoted sides at six players. Native faction/hireling exclusions are enforced. Lake includes the Ferry and Mountain includes the Tower; up to two additional landmarks can be selected. Advanced setup uses the chosen factions without a draft.
 
-Public settings travel with the private match so guests load the chosen board. Saved native initialization preserves the settings and bot seats. Private seat identities follow the chosen factions even when the native engine exchanges the two Vagabond assignments. Clockwork bots use the shared native AI evaluators for expansion interactions, including returning destroyed Badger relics. Clockwork currently uses no optional traits and Vagabot uses Tinker. Cosmetic DLC uses the game's existing settings. Ownership verification remains deferred; entitlement checks are unchanged.
+Public settings travel with the private match so guests load the chosen board. Saved native initialization preserves the settings and bot seats. Private seat identities follow the chosen factions even when the native engine exchanges the two Vagabond assignments. Clockwork bots use the shared native AI evaluators for expansion interactions, including returning destroyed Badger relics. Clockwork supports all four optional traits per bot and the native Tinker, Thief, and Ranger Vagabot characters. Cosmetic DLC uses the game's existing settings. Ownership verification remains deferred; entitlement checks are unchanged.
+
+The DLC regression matrix passes 14 scenarios with 1,679 accepted decisions, including recovery checks for Clockwork settings and paired Vagabond characters. These runs cover setup and sampled turns, not every possible expansion interaction.
 
 ## What works
 
@@ -53,15 +66,15 @@ Public settings travel with the private match so guests load the chosen board. S
 - Native six-player board rendering and legal placements through Root's controls in seats 1 and 6.
 - Complete faction setup through six TCP clients.
 - One full round through all six factions in the native rules probe, with 50 accepted decisions.
-- A complete six-player match through authenticated TCP seats: 632 accepted decisions, ending in a native Woodland Alliance victory at 33 points. All six seats received matching standings, including late joins to the completed match.
+- A complete six-player match through authenticated TCP seats: 1,020 accepted decisions, ending in a native Woodland Alliance victory at 31 points. All six seats received matching standings, including late joins to the completed match. Eleven periodic checks verified private hand visibility.
 - Combat in the full-match run, including battles, dice rolls, ambushes, casualties, and Field Hospitals. A separate graphical client test plays an ambush through Root's native card dialog.
-- Entity and integer target responses, optional passes, faction custom choices, and Riverfolk prices. Entity selections preserve repeated targets for recruiting multiple warriors in one clearing. Weighted selections use Root's native selection-control validation.
+- Entity and integer target responses, optional passes, grouped targets, attributed choices, faction custom choices, and Riverfolk prices. Entity selections preserve repeated targets for recruiting multiple warriors in one clearing. Weighted and grouped selections use Root's native selection-control validation.
 - Current-state join snapshots with seat-specific visibility. Tests cover hidden shared decks, Eyrie's private deck, and dealt hands, including Riverfolk's public hand.
 - Host validation of seat ownership, selection counters, targets, selection counts, prices, and request format.
-- Autosave and native checkpoint recovery. A resumed match accepted 436 further decisions and reached an Alliance victory at 31 points. The focused finished-match regression verifies all six snapshots, hands, and standings after restart, including explicit ownership of transferred cards.
+- Autosave and native checkpoint recovery. The host was killed at decision 250, resumed with all six snapshots and pending decisions intact, and accepted 770 further decisions to victory. A second restart preserved the completed match, hands, and standings, including explicit ownership of transferred cards.
 - A native client in seat 6 joined and made a setup move through an authenticated SSH tunnel between isolated local processes.
 
-This is a working development prototype, not a complete release. Six simultaneous graphical clients and the final results UI have not been verified. One full match does not establish exhaustive faction or combat coverage. Weighted selections pass native-control checks but were not encountered in the full-match run. Grouping selections and other specialized messages, chat, and resignation are not implemented. Unsupported actions can leave the client waiting; inspect its log. Restarting a client requires its still-valid invitation and a running host. There is no automatic reconnection.
+This is a working playtest build. Six simultaneous graphical clients have not been verified. The native UI test covers invitations, readiness, and returning to the menu with the save preserved. A completed save displays all six standings and can return to the final board. Root's built-in four-player victory scene is replaced by the mod's results screen. One full match does not establish exhaustive faction or combat coverage. Weighted selections pass native-control checks but were not encountered in the full-match run. Unknown actions show an in-game explanation and refresh the board. Chat is not implemented. Steam guests reconnect automatically to a running host and fetch a current private snapshot without replaying an unconfirmed move. If retries fail, the game offers Reconnect. A host restart still requires fresh invitations.
 
 ## Prepare and test
 
@@ -89,11 +102,11 @@ Prerequisites: installed and initialized Root, Python 3.12+, Xvfb, xvfb-run, xau
 
 Build and setup scripts acquire lab locks. Stop running sessions before updating their plugins. The host lab is `.lab/`; the separate client lab is `.lab/client/`. Tests clean up their own processes and temporary credentials.
 
-Retained evidence is in `results/`. Detailed logs and generated API bindings stay in ignored `.lab/`. Native test results must report `"status": "passed"`; Proton's exit code alone is insufficient.
+Local generated evidence is in ignored `results/`. Detailed logs and generated API bindings stay in ignored `.lab/`. Native test results must report `"status": "passed"`; Proton's exit code alone is insufficient.
 
 `test-gameplay.py` drives all six seats to a native victory, checks hand privacy every 100 decisions, and verifies finished-match joins. `selection-tests` covers repeated recruitment targets, 32 comparisons with native weighted controls, and six weighted boundary cases. The gameplay driver uses seeded choices, but native entity ordering can change the path between runs.
 
-`test-gameplay.py --restart-at 250` kills only the lab host's Root process, restores its checkpoint with fresh credentials, compares all six snapshots and pending decisions, and continues to victory. The focused `test-completed-recovery.py CHECKPOINT PRE_CRASH_SNAPSHOTS` reruns finished-match recovery against captured pre-crash snapshots. The final ownership fix was verified with that focused regression; the entire long gameplay test has not been repeated after that fix.
+`test-gameplay.py --restart-at 250` kills only the lab host's Root process, restores its checkpoint with fresh credentials, compares all six snapshots and pending decisions, and continues to victory. This full regression passes, including a second restart after the match finishes. The focused `test-completed-recovery.py CHECKPOINT PRE_CRASH_SNAPSHOTS` can rerun finished-match recovery against captured pre-crash snapshots.
 
 ## Start a manual session
 
@@ -152,6 +165,6 @@ Copy that seat's invitation privately to the client, change its `port` to `29655
 
 The host uses `TuberMatch` with `matchType=Live`, native JSON analyzers, and `ObfuscatedMessageActionFactory`. The client suppresses its local rules authority. The native six-seat layout works without an additional layout patch.
 
-Tested stack: Unity 2022.3.62f2, Windows x64 IL2CPP, BepInEx 6.0.0-be.788+5b766a3, .NET SDK 6.0.428, Proton Experimental / Wine 11.0. The mod is tied to this game build and may break after an update. History is retained in memory and responses are capped at 4 MiB by the client; long-match history handling still needs work.
+Tested stack: Unity 2022.3.62f2, Windows x64 IL2CPP, BepInEx 6.0.0-be.788+5b766a3, .NET SDK 6.0.428, Proton Experimental / Wine 11.0. The mod is tied to this game build and may break after an update. Each seat retains at most 8 MiB of serialized history, with absolute cursors and updates paginated below the 4 MiB transport limit. Lagging clients receive a private snapshot. A snapshot that exceeds the transport limit produces an explicit error. Normal player sessions have no fixed lifetime; development runs retain their time limits.
 
 The private match transport does not use Dire Wolf's multiplayer service. The unmodified game startup can still request public store/catalog data. These tests do not establish how the official multiplayer service enforces its four-player limit.

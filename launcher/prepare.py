@@ -49,7 +49,7 @@ def prepare(installation: Installation, data: Path, payload: Path, progress) -> 
     marker = data / 'prepared.json'
     if marker.is_file():
         previous = json.loads(marker.read_text())
-        if previous.get('build') != BUILD or previous.get('version') != VERSION:
+        if previous.get('build') != BUILD:
             raise ValueError('This prepared copy uses a different game version. Your saved matches are preserved. Install the matching launcher before playing.')
         for role in ('host', 'client'):
             installed = data / role / 'game/BepInEx/plugins/EngineProbe.dll'
@@ -57,12 +57,28 @@ def prepare(installation: Installation, data: Path, payload: Path, progress) -> 
                 raise ValueError('Prepared mod files changed outside this launcher. They were preserved. Restore your previous mod files before trying again.')
             if not (data / role / 'game/Root.exe').is_file():
                 raise ValueError('A prepared game copy is missing. Use a fresh launcher data folder to prepare again.')
-        for role in ('host', 'client'):
-            installed = data / role / 'game/BepInEx/plugins/EngineProbe.dll'
-            temporary = installed.with_suffix('.update')
-            shutil.copy2(plugin, temporary)
-            temporary.replace(installed)
-        marker.write_text(json.dumps(expected))
+        originals = {}
+        staged = []
+        temporary_marker = marker.with_suffix('.update')
+        try:
+            for role in ('host', 'client'):
+                installed = data / role / 'game/BepInEx/plugins/EngineProbe.dll'
+                originals[installed] = installed.read_bytes()
+                temporary = installed.with_suffix('.update')
+                staged.append(temporary)
+                shutil.copy2(plugin, temporary)
+            temporary_marker.write_text(json.dumps(expected))
+            for installed, temporary in zip(originals, staged):
+                temporary.replace(installed)
+            temporary_marker.replace(marker)
+        except BaseException:
+            for installed, original in originals.items():
+                installed.write_bytes(original)
+            raise
+        finally:
+            for temporary in staged:
+                temporary.unlink(missing_ok=True)
+            temporary_marker.unlink(missing_ok=True)
         progress('Already prepared. Ready to host or join.')
         return
     if any((data / role).exists() for role in ('host', 'client')):

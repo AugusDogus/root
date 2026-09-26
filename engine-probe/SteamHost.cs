@@ -21,23 +21,37 @@ internal sealed class SteamHost : IDisposable
     private readonly uint listener;
     private readonly int authorityPort;
     private readonly string[] tokens;
+    private readonly string[] authorityTokens;
+    private readonly Func<ulong, string>? names;
     private readonly HashSet<int> humanSeats;
     private readonly Dictionary<uint, Peer> peers = new();
     private readonly Dictionary<int, ulong> seatOwners = new();
+    private readonly List<(int? Seat, Task<byte[]> Task)> retiring = new();
+    public ulong? Owner(int seat) => seatOwners.TryGetValue(seat - 1, out var owner) ? owner : null;
+    public bool Connected(int seat) => peers.Values.Any(peer => peer.Seat == seat - 1);
+    public bool ReleaseSeat(int seat)
+    {
+        if (!humanSeats.Contains(seat) || Connected(seat) || retiring.Any(item => item.Seat == seat - 1 && !item.Task.IsCompleted)) return false;
+        seatOwners.Remove(seat - 1);
+        tokens[seat - 1] = Guid.NewGuid().ToString("N");
+        return true;
+    }
     public int VirtualPort { get; }
     public ulong Identity => sockets.Self;
     public int AuthenticatedPeers => peers.Values.Count(peer => peer.Seat is not null);
     public int RejectedPeers { get; private set; }
     public int ConnectionCallbacks { get; private set; }
     public int AcceptedConnections { get; private set; }
-    public SteamHost(SteamNative api, int port, string[] tokens, int[]? humanSeats = null)
+    public SteamHost(SteamNative api, int port, string[] tokens, int[]? humanSeats = null, Func<ulong, string>? names = null)
     {
         if (port is < 1 or > 65535 || tokens.Length != 6 || tokens.Distinct().Count() != 6 ||
             tokens.Any(token => !System.Text.RegularExpressions.Regex.IsMatch(token, "\\A[0-9a-f]{32}\\z")))
             throw new InvalidDataException("Invalid private Steam host configuration.");
         this.api = api;
         authorityPort = port;
-        this.tokens = tokens;
+        this.tokens = tokens.ToArray();
+        authorityTokens = tokens.ToArray();
+        this.names = names;
         this.humanSeats = (humanSeats ?? Enumerable.Range(2, 5).ToArray()).ToHashSet();
         sockets = new(api);
         VirtualPort = Random.Shared.Next(100, 1000);
@@ -58,6 +72,7 @@ internal sealed class SteamHost : IDisposable
     }
     public void Tick()
     {
+        retiring.RemoveAll(item => item.Task.IsCompleted);
         foreach (var (connection, info) in sockets.Changes())
         {
             ConnectionCallbacks++;
@@ -107,7 +122,12 @@ internal sealed class SteamHost : IDisposable
         seatOwners[seat] = peer.Identity;
         peer.LastId = message.Id;
         peer.Channel.ResetDeadline();
-        peer.Pending = Task.Run(() => Exchange(message.Body));
+        var forwarded = request.Deserialize<Dictionary<string, JsonElement>>() ?? throw new InvalidDataException("Invalid request.");
+        forwarded["token"] = JsonSerializer.SerializeToElement(authorityTokens[seat]);
+        if (op.GetString() == "join" && names is not null)
+            forwarded["name"] = JsonSerializer.SerializeToElement(MatchLobby.CleanName(names(peer.Identity)));
+        var body = JsonSerializer.SerializeToUtf8Bytes(forwarded);
+        peer.Pending = Task.Run(() => Exchange(body));
     }
     private byte[] Exchange(byte[] request)
     {
@@ -139,6 +159,10 @@ internal sealed class SteamHost : IDisposable
         }
     }
     private void Reject(uint connection) { RejectedPeers++; Drop(connection); }
-    private void Drop(uint connection) { peers.Remove(connection); sockets.Close(connection); }
+    private void Drop(uint connection)
+    {
+        if (peers.Remove(connection, out var peer) && peer.Pending is { } task) retiring.Add((peer.Seat, task));
+        sockets.Close(connection);
+    }
     public void Dispose() { sockets.Dispose(); peers.Clear(); }
 }

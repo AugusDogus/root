@@ -12,6 +12,7 @@ import urllib.request
 import zipfile
 
 from windows_launcher import PROJECT, windows_path, windows_process
+from steam import VERSION
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
     pe_offset = struct.unpack_from('<I', content, 0x3c)[0]
     assert content[pe_offset:pe_offset + 4] == b'PE\0\0'
     assert struct.unpack_from('<H', content, pe_offset + 24 + 68)[0] == 2, 'Expected a windowed executable'
-    with zipfile.ZipFile(PROJECT / 'dist/root-six-player-0.1.0-windows.zip') as archive:
+    with zipfile.ZipFile(PROJECT / f'dist/root-six-player-{VERSION}-windows.zip') as archive:
         assert archive.namelist() == ['Root Six Player.exe']
         assert archive.read('Root Six Player.exe') == content
     data = lab / 'data'

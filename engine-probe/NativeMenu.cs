@@ -25,6 +25,13 @@ internal sealed class NativeMenu
     private bool hosting;
     private float nextFind;
     private string? failure;
+    private NativeMatchMenu? matchMenu;
+    public string Screen { get; private set; } = "";
+    public bool IsPlaying => playing;
+    public void AttachMatch(PrivateClient client, Func<SeatStatus[]> roster, Func<int, bool>? release, Action returnHome)
+        => matchMenu = new(this, client, roster, release, returnHome);
+    public void ReturnToBoard() => Toolbar();
+    public void InviteSeat(int seat) => Friends(seat, friends(), 0);
 
     public NativeMenu(string lab, Action<string?, MatchSetup> startHost, Func<(ulong, string)[]> friends, Func<int, ulong, string> invite)
     {
@@ -35,6 +42,7 @@ internal sealed class NativeMenu
 
     public void Update(float now)
     {
+        matchMenu?.Update(now);
         if (root != null || now < nextFind) return;
         nextFind = now + 1;
         var landing = Object.FindObjectOfType<LandingPromptBehaviour>();
@@ -73,7 +81,8 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Early playtest · Choose your factions", 28, 635, 410, 32, 18);
+        Text("Version 0.2.0 · Friends' playtest", 28, 635, 410, 32, 18);
+        Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
     private void Host(string? save, MatchSetup? setup = null)
@@ -127,6 +136,9 @@ internal sealed class NativeMenu
     public void Playing(bool isHost)
     {
         if (playing) return;
+        // Root keeps this curtain's raycast blocker active during board loading.
+        // Wait for it to close before exposing interactive match controls.
+        if (GameObject.Find("P_ui_PlaymatLoadingCurtain(Clone)") != null) return;
         playing = true;
         hosting = isHost;
         Toolbar();
@@ -142,6 +154,7 @@ internal sealed class NativeMenu
     {
         Begin(false, "playing");
         if (hosting) Button("Invite friends", 215, 10, 185, 44, Seats);
+        if (matchMenu is { } controls) Button("Match", 415, 10, 165, 44, controls.Show);
     }
 
     private void Seats()
@@ -181,14 +194,24 @@ internal sealed class NativeMenu
         Button("Back to game", 460, 580, 360, 60, Toolbar);
     }
 
-    public void Error(string message)
+    public void Notice(string title, string message)
+    {
+        Begin(true, "notice");
+        Text(title, 260, 130, 760, 70, 34);
+        Text(message, 200, 230, 880, 260, 24);
+        Button(playing ? "Back to game" : "Back to menu", 460, 600, 360, 62, playing ? Toolbar : Home);
+    }
+
+    public void Error(string message, Action? reconnect = null, Action? returnHome = null)
     {
         failure = message;
         if (root == null) return;
         Begin(true, "error");
         Text("Could not continue", 260, 140, 760, 70, 36);
         Text(message, 260, 230, 760, 280, 24);
-        Button("Quit game", 460, 600, 360, 62, Application.Quit);
+        if (reconnect is not null) Button("Reconnect", 460, 460, 360, 62, reconnect);
+        if (returnHome is not null) Button("Return to menu", 460, 555, 360, 62, returnHome);
+        Button("Quit game", 460, 650, 360, 62, Application.Quit);
     }
 
     private void Paging(int offset, int count, Action<int> select)
@@ -199,6 +222,7 @@ internal sealed class NativeMenu
 
     internal void Begin(bool dim, string screen)
     {
+        Screen = screen;
         if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1")
             File.WriteAllText(Path.Combine(lab, "native-menu-screen"), screen);
         if (page != null) { page.SetActive(false); Object.Destroy(page); }

@@ -8,7 +8,11 @@ namespace RootEngineProbe;
 // Private loopback control plane. Gameplay and invitations stay in Root's Steam process.
 internal static class LauncherControl
 {
-    public static async Task StartHost(string lab, string? save, MatchSetup setup)
+    public static Task StartHost(string lab, string? save, MatchSetup setup) => Run(lab,
+        save is null ? "host-native" : "resume-native", new { save = save ?? "", setup = JsonSerializer.Serialize(setup) }, true);
+    public static Task ReturnHome(string lab) => Run(lab, "return-menu", new { }, false);
+
+    private static async Task Run(string lab, string action, object values, bool wait)
     {
         using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(lab, "launcher-control.json")));
         var port = config.RootElement.GetProperty("port").GetInt32();
@@ -20,13 +24,14 @@ internal static class LauncherControl
             BaseAddress = new Uri($"http://127.0.0.1:{port}"), Timeout = TimeSpan.FromSeconds(10)
         };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var content = new StringContent(JsonSerializer.Serialize(new { save = save ?? "", setup = JsonSerializer.Serialize(setup) }), Encoding.UTF8, "application/json");
+        using var content = new StringContent(JsonSerializer.Serialize(values), Encoding.UTF8, "application/json");
         // The loopback API intentionally accepts an exact content type.
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        using var response = await http.PostAsync(save is null ? "/api/host-native" : "/api/resume-native", content);
+        using var response = await http.PostAsync("/api/" + action, content);
         using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         if (!response.IsSuccessStatusCode)
             throw new IOException(result.RootElement.GetProperty("error").GetString());
+        if (!wait) return;
         var deadline = DateTime.UtcNow.AddMinutes(11);
         while (DateTime.UtcNow < deadline)
         {

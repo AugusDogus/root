@@ -11,7 +11,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
     private readonly string lab = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, ".."));
     private SteamNative? api;
     private SteamHost? host;
-    private SteamGuest? guest;
+    private RecoveringConnection? guest;
     private SteamInvitations? invitations;
     private PrivateClient? client;
     private SteamInvitation? accepted;
@@ -24,6 +24,8 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
     private Vector2 scroll;
     private NativeMenu? menu;
     private Task? startingHost;
+    private bool reconnecting;
+    private Task? returningHome;
     public SteamSessionBehaviour(IntPtr pointer) : base(pointer) { }
     public void Start()
     {
@@ -44,6 +46,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         try
         {
             menu?.Update((float)clock.Elapsed.TotalSeconds);
+            if (returningHome is { IsCompleted: true }) { returningHome.GetAwaiter().GetResult(); returningHome = null; }
             if (error is not null) return;
             if (api is null)
             {
@@ -64,13 +67,21 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
             }
             if (accepted is { } invitation && guest is null && host is null && api is { } ready)
             {
-                guest = new(ready, invitation);
+                guest = new(() => new SteamGuest(ready, invitation), () => clock.Elapsed.TotalSeconds, invitation.Token);
                 client = new(invitation.Token, guest.Exchange);
+                AttachControls();
                 message = $"Connecting to Steam host as seat {invitation.Seat}…";
                 menu?.Connecting("Joining your friends…", "Opening your seat at the table.");
             }
             host?.Tick();
             guest?.Tick();
+            if (guest?.Reconnecting == true)
+            {
+                client?.DiscardQueuedMoves();
+                if (!reconnecting) menu?.Connecting("Reconnecting…", "Checking the current board. Your last move will not be repeated.");
+                reconnecting = true;
+            }
+            else if (reconnecting) { reconnecting = false; menu?.ReturnToBoard(); }
             client?.Update((float)clock.Elapsed.TotalSeconds);
             if (client?.ReceivedMessages > 0 && UnityEngine.Object.FindObjectOfType<tuber.client.match.behaviours.TuberEntitiesProvider>()?.TuberEntities?.allPlayers.Count == 6)
                 menu?.Playing(host is not null);
@@ -78,9 +89,10 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         catch (Exception failure)
         {
             error = failure.Message;
-            menu?.Error(error);
+            menu?.Error(error, accepted is not null ? Reconnect : null, () => returningHome = LauncherControl.ReturnHome(lab));
             File.WriteAllText(Path.Combine(lab, "steam-status.json"), JsonSerializer.Serialize(new { error }));
-            Cleanup();
+            // Keep the host and its saved match alive while a player reads the error.
+            guest?.Dispose();
         }
     }
     private void Initialize()
@@ -90,7 +102,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         {
             // Acceptance arrives from Steam's explicit Join action. Never replace a running match.
             if (guest is null && host is null && accepted is null && startingHost is null) accepted = invitation;
-        });
+        }, detail => menu?.Notice("Invitation needs an update", detail));
         var mode = Environment.GetEnvironmentVariable("ROOT_LAB_MODE");
         if (mode == "steam-host")
         {
@@ -111,11 +123,40 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         var tokens = config.RootElement.GetProperty("tokens").Deserialize<string[]>() ?? throw new InvalidDataException("Missing host seats.");
         hostedSetup = config.RootElement.TryGetProperty("setup", out var settings) ? MatchSetup.Parse(settings.GetRawText()) : new();
         menu?.SetHostedSetup(hostedSetup);
-        host = new(ready, port, tokens, Enumerable.Range(2, 5).Where(seat => !MatchSetup.IsBot(hostedSetup.Factions[seat - 1])).ToArray());
-        client = new(Path.Combine(lab, "connection.json"));
+        host = new(ready, port, tokens, Enumerable.Range(2, 5).Where(seat => !MatchSetup.IsBot(hostedSetup.Factions[seat - 1])).ToArray(),
+            identity => invitations?.NameFor(identity) ?? "Steam friend");
+        client = new(Path.Combine(lab, "connection.json")) { DisplayName = MatchLobby.CleanName(invitations?.NameFor(host.Identity) ?? "Host") };
+        AttachControls();
         var texts = new[] { "" }.Concat(Enumerable.Range(2, 5).Select(seat => MatchSetup.IsBot(hostedSetup.Factions[seat - 1]) ? "" : host.Invitation(seat).Encode())).ToArray();
         File.WriteAllText(Path.Combine(lab, "steam-status.json"), JsonSerializer.Serialize(new { invitations = texts }));
         message = "Steam host ready. Invite friends using the button below.";
+    }
+    private void Reconnect()
+    {
+        if (api is not { } ready || accepted is not { } invitation) return;
+        guest?.Dispose();
+        guest = new(() => new SteamGuest(ready, invitation), () => clock.Elapsed.TotalSeconds, invitation.Token);
+        if (client is null) { client = new(invitation.Token, guest.Exchange); AttachControls(); }
+        else client.ReplaceTransport(guest.Exchange);
+        error = null;
+        File.Delete(Path.Combine(lab, "steam-status.json"));
+        menu?.Connecting("Reconnecting…", "Checking your seat and the current board.");
+        reconnecting = true;
+    }
+    private void AttachControls()
+    {
+        if (client is not { } active) return;
+        menu?.AttachMatch(active, () => active.Lobby.Select(seat =>
+        {
+            if (host is null || seat.Seat == 1 || MatchSetup.IsBot(active.Setup.Factions[seat.Seat - 1])) return seat;
+            var owner = host.Owner(seat.Seat);
+            return seat with {
+                State = seat.State == "Resigned" ? seat.State : host.Connected(seat.Seat) ? "Connected" : owner is null ? "Waiting" : "Disconnected" };
+        }).ToArray(), host is { } hosting ? hosting.ReleaseSeat : null, () =>
+        {
+            returningHome = LauncherControl.ReturnHome(lab);
+            menu?.Connecting("Returning to the menu…", "Your hosted match remains saved.");
+        });
     }
     private string SendInvitation(int seat, ulong friend)
     {

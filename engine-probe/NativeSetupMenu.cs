@@ -25,7 +25,7 @@ internal sealed class NativeSetupMenu
         }
         view.Button("Map: " + MatchSetup.Maps[setup.Map], 675, 190, 535, 58, Maps);
         view.Button("Deck: " + MatchSetup.Decks[setup.Deck], 675, 260, 535, 58, () => { setup = setup with { Deck = 1 - setup.Deck }; Show(); });
-        view.Button("Vagabond characters", 675, 330, 535, 58, Characters);
+        view.Button("Characters & Clockwork", 675, 330, 535, 58, Characters);
         view.Button($"Landmarks: {setup.Landmarks.Length}", 675, 400, 535, 58, Landmarks);
         view.Button($"Hirelings: {setup.Hirelings.Length}", 675, 470, 535, 58, Hirelings);
         view.Button("Setup: " + (setup.AdvancedSetup ? "Advanced (chosen factions)" : "Standard"), 675, 540, 535, 58,
@@ -51,14 +51,16 @@ internal sealed class NativeSetupMenu
             {
                 var roster = setup.Factions.ToArray();
                 var characters = setup.Characters.ToArray();
+                var traits = setup.BotTraits.ToArray();
                 var occupied = Array.IndexOf(roster, faction.Id);
                 if (occupied >= 0)
                 {
                     (roster[occupied], roster[seat]) = (roster[seat], roster[occupied]);
                     (characters[occupied], characters[seat]) = (characters[seat], characters[occupied]);
+                    (traits[occupied], traits[seat]) = (traits[seat], traits[occupied]);
                 }
-                else { roster[seat] = faction.Id; characters[seat] = 0; }
-                setup = setup with { Factions = roster, Characters = characters };
+                else { roster[seat] = faction.Id; characters[seat] = 0; traits[seat] = Array.Empty<int>(); }
+                setup = setup with { Factions = roster, Characters = characters, BotTraits = traits };
                 message = "Choose your faction and five seats for friends or Clockwork bots.";
                 Show();
             });
@@ -86,15 +88,41 @@ internal sealed class NativeSetupMenu
 
     private void Characters()
     {
-        Page("Vagabond characters", "Each Vagabond must have a different character.");
+        Page("Characters & Clockwork", "Choose Vagabond characters and optional Clockwork traits.");
         var row = 0;
         for (var seat = 0; seat < 6; seat++)
         {
-            if (setup.Factions[seat] is not (3 or 5)) continue;
             var index = seat;
+            if (MatchSetup.IsBot(setup.Factions[seat]))
+            {
+                Choice(MatchSetup.FactionName(setup.Factions[seat]) + $": {setup.BotTraits[seat].Length} traits", row++, () => Clockwork(index));
+                continue;
+            }
+            if (setup.Factions[seat] is not (3 or 5)) continue;
             Choice(MatchSetup.FactionName(setup.Factions[seat]) + ": " + MatchSetup.Vagabonds[setup.Characters[seat]], row++, () => Character(index));
         }
-        if (row == 0) view.Text("Choose a Vagabond faction first.", 260, 320, 760, 70, 27);
+        if (row == 0) view.Text("Choose a Vagabond or Clockwork faction first.", 260, 320, 760, 70, 27);
+    }
+
+    private void Clockwork(int seat)
+    {
+        Page(MatchSetup.FactionName(setup.Factions[seat]), "Choose any optional traits. Difficulty applies to all Clockwork bots.", Characters);
+        for (var index = 0; index < 4; index++)
+        {
+            var trait = index;
+            Choice((setup.BotTraits[seat].Contains(index) ? "Selected: " : "") + MatchSetup.TraitNames[setup.Factions[seat] - 10][index], index, () =>
+            {
+                var traits = setup.BotTraits.ToArray();
+                traits[seat] = traits[seat].Contains(trait) ? traits[seat].Where(value => value != trait).ToArray() : traits[seat].Append(trait).ToArray();
+                setup = setup with { BotTraits = traits };
+                Clockwork(seat);
+            });
+        }
+        view.Button("Difficulty: " + MatchSetup.BotDifficulties[setup.BotDifficulty], 300, 400, 680, 60,
+            () => { setup = setup with { BotDifficulty = (setup.BotDifficulty + 1) % 4 }; Clockwork(seat); });
+        if (setup.Factions[seat] == 13)
+            view.Button("Character: " + MatchSetup.Vagabonds[setup.VagabotCharacter], 300, 500, 680, 60,
+                () => { setup = setup with { VagabotCharacter = setup.VagabotCharacter % 3 + 1 }; Clockwork(seat); });
     }
 
     private void Character(int seat)

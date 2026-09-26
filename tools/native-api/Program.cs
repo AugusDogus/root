@@ -9,7 +9,7 @@ if (args.Length < 2)
 foreach (var file in File.Exists(args[0]) ? new[] { args[0] } : Directory.EnumerateFiles(args[0], "*.dll"))
 {
     using var assembly = AssemblyDefinition.ReadAssembly(file);
-    foreach (var type in assembly.MainModule.Types.Where(type => args.Skip(1).Any(filter => type.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase))))
+    foreach (var type in assembly.MainModule.Types.SelectMany(Types).Where(type => args.Skip(1).Any(filter => type.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase))))
     {
         Console.WriteLine($"TYPE {type.FullName} : {type.BaseType}");
         foreach (var field in type.Fields.Where(field => field.IsLiteral))
@@ -23,3 +23,9 @@ foreach (var file in File.Exists(args[0]) ? new[] { args[0] } : Directory.Enumer
     }
 }
 return 0;
+
+static IEnumerable<TypeDefinition> Types(TypeDefinition type)
+{
+    yield return type;
+    foreach (var child in type.NestedTypes.SelectMany(Types)) yield return child;
+}

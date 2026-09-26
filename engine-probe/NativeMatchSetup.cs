@@ -36,6 +36,7 @@ internal static class NativeMatchSetup
                 traits = new(),
                 character = faction == Factions.Vagabot ? tuber.canis.archetypes.VagabondArchetypes.VagabotTinkerArchetype.archID : null
             };
+            NativeClockwork.Apply(player.ClockworkConfig, (int)faction, setup.BotTraits[seat], setup.VagabotCharacter);
         }
         return player;
     }
@@ -63,6 +64,8 @@ internal static class NativeMatchSetup
         Characters = seats.Select(player => (int)player.StartingCharacter).ToArray(),
         Map = (int)init.ChosenMap, Deck = (int)init.ChosenDeck, AdvancedSetup = init.AdvancedSetup,
         BotDifficulty = ReadBotDifficulty(init),
+        BotTraits = seats.Select(NativeClockwork.ReadTraits).ToArray(),
+        VagabotCharacter = NativeClockwork.ReadCharacter(seats),
         Landmarks = init.LandmarksList?.ToArray().Select(item => (int)item.Landmark)
             .Where(id => !(init.ChosenMap == MapLayout.Lake && id == 1 || init.ChosenMap == MapLayout.Mountain && id == 0)).ToArray() ?? Array.Empty<int>(),
         Hirelings = init.HirelingsList?.ToArray().Select(item => (int)item.Faction).ToArray() ?? Array.Empty<int>()

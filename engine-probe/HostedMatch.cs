@@ -29,10 +29,41 @@ internal sealed class HostedMatch
     public TuberPlayerMatchInitData[] SeatInitialization { get; }
     public MatchThreadV2 Thread { get; }
     public string CheckpointInitialization { get; }
-    public List<string>[] Messages { get; }
+    public SeatHistory[] Messages { get; }
     private readonly string?[] completionMessages;
     public string?[] CompletionMessages => completionMessages.ToArray();
     public int PlayerCount => Messages.Length;
+    public MatchLobby Lobby { get; } = new();
+    private Il2CppSystem.Threading.Tasks.Task? resignation;
+    private readonly HashSet<int> aiSelections = new();
+    public void AdvanceResignedPlayers(Action<Il2CppSystem.Collections.IEnumerator> start)
+    {
+        if (Resigning || Match.GameOverD) return;
+        aiSelections.RemoveWhere(counter => !Thread.HasPendingResponse(counter));
+        foreach (var player in SeatPlayers)
+        {
+            if (!player.IsAI || !Match.HasResigned(player.AccountID)) continue;
+            var counter = Thread.GetCounterForPlayerEntity(player);
+            if (!Thread.HasPendingResponse(counter) || !aiSelections.Add(counter)) continue;
+            // The private authority replaces the online server's AI scheduler.
+            // Root supplies the evaluator, response and native coroutine.
+            start(player.SelectFrom(Thread.GetPlayerPendingResponse(counter).Item2.Selection, Match));
+        }
+    }
+    public bool Resigning => resignation is not null;
+    public void Resign(int seat)
+    {
+        if (Match.GameOverD || Match.HasResigned(SeatInitialization[seat].accountID)) return;
+        resignation = Match.HandleResignGameAsync(SeatInitialization[seat].accountID, TuberMatch.ResignationType.Resign);
+    }
+    public bool CompleteResignation()
+    {
+        if (resignation is not { IsCompleted: true } completed) return false;
+        if (completed.IsFaulted || completed.IsCanceled)
+            throw new InvalidOperationException($"Native resignation failed. The previous checkpoint is preserved: {completed.Exception}");
+        resignation = null;
+        return true;
+    }
 
     public void RestoreCompletionMessages(string?[] saved)
     {
@@ -58,6 +89,7 @@ internal sealed class HostedMatch
             messages.Add(completed);
             return messages.ToArray();
         }
+        if (Match.HasResigned(SeatInitialization[seat].accountID)) return messages.ToArray();
         var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
         if (Thread.HasPendingResponse(counter))
         {
@@ -73,14 +105,18 @@ internal sealed class HostedMatch
     public HostedMatch(TuberMatchInitData init)
     {
         dwd.core.data.ReflectionTypeInitializer.Initialize();
-        Messages = Enumerable.Range(0, init.TuberPlayers.Count).Select(_ => new List<string>()).ToArray();
+        Messages = Enumerable.Range(0, init.TuberPlayers.Count).Select(_ => new SeatHistory()).ToArray();
         completionMessages = new string?[init.TuberPlayers.Count];
         var seats = Enumerable.Range(0, init.TuberPlayers.Count)
             .ToDictionary(seat => init.TuberPlayers[seat].accountID.ToString(), seat => seat);
         var chosenFactions = init.TuberPlayers.ToArray().Select(player => player.Faction).ToArray();
         Match = new TuberMatch();
+        var started = false;
         Il2CppSystem.Action<AccountID, DWDEvent> dispatcher = new Action<AccountID, DWDEvent>((account, message) =>
         {
+            if (started && Match.HasResigned(account) &&
+                (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<SelectionMessage>() is not null ||
+                 message.TryCast<SelectionMessage>() is not null)) return;
             var seat = seats[account.ToString()];
             var json = JSON.ToJSON(message, false);
             Messages[seat].Add(json);
@@ -93,6 +129,7 @@ internal sealed class HostedMatch
         Match.UseTurnTimers = false;
         Match.messageActionFactory = new ObfuscatedMessageActionFactory().Cast<IMessageActionFactory>();
         Match.Start();
+        started = true;
         // Root can swap the Vagabonds between native accounts. Private seats
         // follow the chosen faction, independently of the engine's account order.
         SeatInitialization = chosenFactions.Select(faction =>
@@ -158,6 +195,7 @@ internal sealed class HostedMatch
 
     public SelectionOffer? GetOffer(int seat)
     {
+        if (Match.HasResigned(SeatInitialization[seat].accountID)) return null;
         var counter = Thread.GetCounterForPlayerEntity(SeatPlayers[seat]);
         if (Thread.HasPendingResponse(counter) == false)
             return null;
@@ -213,7 +251,8 @@ internal sealed class HostedMatch
             // An automatically selected source still requires its forced targets.
             // Optional targets, such as the discard undo prompt, may be skipped.
             foreach (var target in information)
-                if (target.TryCast<EntityListTargetInformation>() is not { Forced: false })
+                if (target.TryCast<EntityListTargetInformation>() is not { Forced: false } &&
+                    target.TryCast<EntityGroupingTargetInformation>() is not { Forced: false, MinimumToSelect: 0 })
                     return ChoiceResult.UnsupportedSelection;
         }
         var response = Outgoing.Pass(selection);

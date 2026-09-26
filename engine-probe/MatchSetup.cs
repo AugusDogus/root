@@ -13,6 +13,15 @@ internal sealed record MatchSetup
     public int[] Hirelings { get; init; } = Array.Empty<int>();
     public bool AdvancedSetup { get; init; }
     public int BotDifficulty { get; init; } = 1;
+    public int[][] BotTraits { get; init; } = Enumerable.Range(0, 6).Select(_ => Array.Empty<int>()).ToArray();
+    public int VagabotCharacter { get; init; } = 1;
+    public static readonly string[][] TraitNames =
+    {
+        new[] { "Blitz", "Fortified", "Hospitals", "Iron Will" },
+        new[] { "Nobility", "Relentless", "Swoop", "War Tax" },
+        new[] { "Informants", "Popularity", "Veterans", "Wildfire" },
+        new[] { "Adventurer", "Berserker", "Helper", "Marksman" }
+    };
 
     public static readonly (int Id, string Name)[] PlayerFactions =
     {
@@ -44,6 +53,11 @@ internal sealed record MatchSetup
             return "Choose six different playable factions.";
         if (IsBot(Factions[0])) return "The host must play a human faction. Use a friend seat for Clockwork bots.";
         if (BotDifficulty is < 0 or > 3) return "Choose a valid Clockwork difficulty.";
+        if (VagabotCharacter is < 1 or > 3) return "Vagabot can use Tinker, Thief, or Ranger.";
+        if (BotTraits is null || BotTraits.Length != 6 || BotTraits.Any(traits => traits is null || traits.Length > 4 || traits.Any(id => id is < 0 or > 3) || traits.Distinct().Count() != traits.Length))
+            return "Choose up to four different traits for each Clockwork bot.";
+        if (Enumerable.Range(0, 6).Any(seat => !IsBot(Factions[seat]) && BotTraits[seat].Length > 0))
+            return "Only Clockwork bots can use Clockwork traits.";
         if (Factions.Contains(5) && !Factions.Contains(3)) return "A second Vagabond needs a first Vagabond.";
         if (Characters is null || Characters.Length != 6 || Characters.Any(id => id is < 0 or > 9))
             return "Choose a valid character for each Vagabond.";

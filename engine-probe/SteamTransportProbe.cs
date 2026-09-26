@@ -17,6 +17,8 @@ internal sealed class SteamTransportProbe : IDisposable
     private SteamGuest? rejected;
     private Task<JsonElement>? rejectedReply;
     private int rejectionStage;
+    private SteamGuest? replacement;
+    private Task<JsonElement>? replacementReply;
     public int CompletedResponses { get; private set; }
     public int Rejections => host.RejectedPeers + (botHost?.RejectedPeers ?? 0);
     public int Callbacks => host.ConnectionCallbacks;
@@ -48,6 +50,16 @@ internal sealed class SteamTransportProbe : IDisposable
         host.Tick();
         botHost?.Tick();
         foreach (var guest in guests) guest.Tick();
+        if (replacement is not null)
+        {
+            replacement.Tick();
+            if (replacementReply is not { IsCompleted: true } completed) return false;
+            var response = completed.GetAwaiter().GetResult();
+            if (!response.GetProperty("ok").GetBoolean() || response.GetProperty("seat").GetInt32() != 1)
+                throw new InvalidDataException("Reassigned seat did not reach its original authority seat.");
+            CompletedResponses++;
+            return host.AuthenticatedPeers == 5 && host.RejectedPeers >= 4 && botHost?.RejectedPeers == 1;
+        }
         if (round < 2)
         {
             if (replies.Any(reply => !reply.IsCompleted)) return false;
@@ -101,11 +113,24 @@ internal sealed class SteamTransportProbe : IDisposable
             rejectedReply = rejected.Exchange(new { op = "join", token = tokens[5] });
             return false;
         }
-        return host.AuthenticatedPeers == 4 && host.RejectedPeers >= 3 && botHost?.RejectedPeers == 1;
+        if (rejectionStage == 4)
+        {
+            if (host.ReleaseSeat(3)) throw new InvalidDataException("Connected seat was released.");
+            var old = host.Invitation(2);
+            if (!host.ReleaseSeat(2) || host.Invitation(2).Token == old.Token) throw new InvalidDataException("Disconnected seat did not revoke its invitation.");
+            rejected = new(api, old);
+            rejectedReply = rejected.Exchange(new { op = "join", token = old.Token });
+            return false;
+        }
+        var next = host.Invitation(2);
+        replacement = new(api, next);
+        replacementReply = replacement.Exchange(new { op = "join", token = next.Token });
+        return false;
     }
     public void Dispose()
     {
         rejected?.Dispose();
+        replacement?.Dispose();
         foreach (var guest in guests) guest.Dispose();
         host.Dispose();
         botHost?.Dispose();

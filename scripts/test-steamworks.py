@@ -49,7 +49,8 @@ def main():
             if not evidence.is_file():
                 raise RuntimeError(f'Steam probe did not report a result. Inspect {lab / "results/steam-probe"}.')
             result = json.loads(evidence.read_text())
-            if result['status'] == 'passed' and sorted(requests) != sorted((seat, op) for seat in range(1, 6) for op in ('join', 'poll')):
+            expected = [(seat, op) for seat in range(1, 6) for op in ('join', 'poll')] + [(1, 'join')]
+            if result['status'] == 'passed' and sorted(requests) != sorted(expected):
                 raise AssertionError('Unexpected requests reached the authority.')
             (PROJECT / 'results/steamworks-probe.json').write_text(json.dumps(result, indent=2) + '\n')
             print(json.dumps(result))

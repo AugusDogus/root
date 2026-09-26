@@ -15,6 +15,8 @@ internal abstract record TargetChoice
     {
         public override ChoiceResult Validate(TargetInformation information)
         {
+            if (information.TryCast<EntityGroupingTargetInformation>() is { } grouped)
+                return GroupedTargets.Validate(grouped, Values);
             if (information.TryCast<KnapsackEntityListTargetInformation>() is { } weighted)
                 return WeightedTargets.Validate(weighted, Values);
             var target = information.TryCast<EntityListTargetInformation>();
@@ -41,6 +43,8 @@ internal abstract record TargetChoice
                 return Value >= range.Min && Value <= range.Max ? ChoiceResult.Accepted : ChoiceResult.InvalidTarget;
             if (information.TryCast<CustomChoiceTargetInformation>() is { } choice)
                 return Value >= 0 && Value < choice.Choices.Length ? ChoiceResult.Accepted : ChoiceResult.InvalidTarget;
+            if (information.TryCast<CustomChoiceWithAttributesTargetInformation>() is { } attributed)
+                return Value >= 0 && Value < attributed.Choices.Length ? ChoiceResult.Accepted : ChoiceResult.InvalidTarget;
             return ChoiceResult.UnsupportedSelection;
         }
         public override TargetResponse ToNative() => new IntTargetResponse(Value);

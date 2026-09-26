@@ -11,7 +11,7 @@ namespace RootEngineProbe;
 // Native snapshots and validated selection responses are scoped to one seat.
 internal static class LoopbackProbe
 {
-    public static void Run(ManualLogSource log)
+    public static IEnumerator<object?> Run(ManualLogSource log, Action<Il2CppSystem.Collections.IEnumerator> startAi)
     {
         var output = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, "..", "results", "server"));
         Directory.CreateDirectory(output);
@@ -40,11 +40,21 @@ internal static class LoopbackProbe
             var lifetime = int.TryParse(Environment.GetEnvironmentVariable("ROOT_LAB_LIFETIME_SECONDS"), out var seconds)
                 && seconds >= 30 && seconds <= 43200 ? seconds : 300;
             var running = true;
-            while (running && elapsed.Elapsed < TimeSpan.FromSeconds(lifetime))
+            var savedCursor = host.Messages.Sum(history => history.Count);
+            var playerSession = Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1";
+            while (running && (playerSession || elapsed.Elapsed < TimeSpan.FromSeconds(lifetime)))
             {
+                yield return null;
+                var resigned = host.CompleteResignation();
+                host.AdvanceResignedPlayers(startAi);
+                var currentCursor = host.Messages.Sum(history => history.Count);
+                if (checkpoint is not null && !host.Resigning && (resigned || savedCursor != currentCursor))
+                {
+                    MatchCheckpoint.Save(host, checkpoint);
+                    savedCursor = currentCursor;
+                }
                 if (listener.Pending() == false)
                 {
-                    System.Threading.Thread.Sleep(10);
                     continue;
                 }
                 using var client = listener.AcceptTcpClient();
@@ -69,11 +79,11 @@ internal static class LoopbackProbe
                     {
                         var seat = Array.IndexOf(tokens, token);
                         reply = seat < 0 ? Error("Unauthorized") : Handle(host, seat, op, root);
-                        if (checkpoint is not null && seat >= 0 && op is not ("poll" or "join") &&
+                        if (checkpoint is not null && seat >= 0 && !host.Resigning && op is not ("poll" or "join" or "ready") &&
                             JsonSerializer.SerializeToElement(reply).GetProperty("ok").GetBoolean())
                         {
-                            try { MatchCheckpoint.Save(host, checkpoint); }
-                            catch (IOException error)
+                            try { MatchCheckpoint.Save(host, checkpoint); savedCursor = host.Messages.Sum(history => history.Count); }
+                            catch (Exception error) when (error is IOException or InvalidDataException)
                             {
                                 throw new InvalidOperationException("Checkpoint write failed. Host stopped before acknowledging the move; the previous checkpoint is preserved.", error);
                             }
@@ -92,12 +102,6 @@ internal static class LoopbackProbe
             }
             log.LogInfo("SERVER: stopped");
         }
-        catch (Exception error)
-        {
-            log.LogError($"SERVER FAILED: {error}");
-            UnityEngine.Application.Quit(1);
-            return;
-        }
         finally
         {
             listener.Stop();
@@ -108,13 +112,30 @@ internal static class LoopbackProbe
 
     private static object Handle(HostedMatch host, int seat, string op, JsonElement request)
     {
-        if (!host.SeatInitialization[seat].isHuman) return Error("BotSeat");
+        if (MatchSetup.IsBot((int)host.SeatInitialization[seat].Faction)) return Error("BotSeat");
+        host.Lobby.Touch(seat);
+        if (op == "join" && request.TryGetProperty("name", out var name))
+        {
+            if (name.ValueKind != JsonValueKind.String || name.GetString() is not { } text || text.Length > 64 || text.Any(char.IsControl))
+                return Error("InvalidRequest");
+            if (text.Length != 0) host.Lobby.SetName(seat, text);
+        }
         if (op is "poll" or "join")
         {
             var after = 0;
             if (op == "poll" && (TryInt(request, "after", out after) == false || after < 0 || after > host.Messages[seat].Count))
                 return Error("InvalidCursor");
-            var messages = op == "join" ? host.Snapshot(seat) : host.Messages[seat].Skip(after).ToArray();
+            var history = host.Messages[seat];
+            var reset = op == "join" || after < history.First;
+            (string[] Messages, int Next) batch;
+            try { batch = reset ? (host.Snapshot(seat), history.Count) : history.Read(after); }
+            catch (InvalidDataException) when (!reset)
+            {
+                // A single update cannot be split inside native JSON. Replace it
+                // with the current private state instead of retrying it forever.
+                reset = true;
+                batch = (host.Snapshot(seat), history.Count);
+            }
             return new
             {
                 ok = true,
@@ -123,6 +144,7 @@ internal static class LoopbackProbe
                 // The rules set this inherited flag at victory. The similarly
                 // named TuberMatch.GameOver remains false in completed matches.
                 gameOver = host.Match.GameOverD,
+                transitioning = host.Resigning,
                 winner = host.Match.WinnerExists ? host.Match.Winner.ToString() : null,
                 gameId = host.Match.TuberMatchInitData.gameID.ToString(),
                 setup = NativeMatchSetup.Read(host.Match.TuberMatchInitData, host.SeatInitialization),
@@ -132,11 +154,30 @@ internal static class LoopbackProbe
                     faction = (int)host.SeatInitialization[i].Faction,
                     name = $"Private player {i + 1}"
                 }).ToArray(),
-                next = host.Messages[seat].Count,
+                next = batch.Next,
+                reset,
+                lobby = host.Lobby.Status(host.SeatInitialization.Select(player => (int)player.Faction).ToArray(),
+                    index => host.Match.HasResigned(host.SeatInitialization[index].accountID)),
                 offer = host.GetOffer(seat),
-                messages = messages.Select(json => JsonSerializer.Deserialize<JsonElement>(json)).ToArray()
+                messages = batch.Messages.Select(json => JsonSerializer.Deserialize<JsonElement>(json)).ToArray()
             };
         }
+        if (op == "ready")
+        {
+            if (!request.TryGetProperty("ready", out var ready) || ready.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return Error("InvalidRequest");
+            host.Lobby.SetReady(seat, ready.GetBoolean());
+            return new { ok = true };
+        }
+        if (op == "resign")
+        {
+            if (host.Resigning) return Error("MatchBusy");
+            host.Resign(seat);
+            return new { ok = true, pending = host.Resigning };
+        }
+        if (host.Resigning) return Error("MatchBusy");
+        if (host.Match.GameOverD) return Error("MatchFinished");
+        if (host.Match.HasResigned(host.SeatInitialization[seat].accountID)) return Error("SeatResigned");
         if (op == "prices")
         {
             if (TryInt(request, "counter", out var counter) == false || counter < 0 ||
@@ -227,6 +268,8 @@ internal static class LoopbackProbe
     private static void WriteReply(NetworkStream stream, object reply)
     {
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(reply) + "\n");
+        if (bytes.Length > SteamFrames.MaxResponse)
+            bytes = Encoding.UTF8.GetBytes("{\"ok\":false,\"error\":\"SnapshotTooLarge\"}\n");
         stream.Write(bytes);
     }
 }

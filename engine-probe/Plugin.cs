@@ -5,7 +5,7 @@ using BepInEx.Unity.IL2CPP;
 
 namespace RootEngineProbe;
 
-[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.1.0")]
+[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.2.0")]
 public sealed class Plugin : BasePlugin
 {
     public override void Load()
@@ -61,7 +61,8 @@ public sealed class Plugin : BasePlugin
         }
         if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "server")
         {
-            LoopbackProbe.Run(Log);
+            AuthorityBehaviour.Install();
+            AddComponent<AuthorityBehaviour>();
             return;
         }
         if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "host")

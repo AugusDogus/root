@@ -69,7 +69,7 @@ class Session:
             if self.busy:
                 raise ValueError('Another operation is still running. Wait for it to finish.')
             native_host = action in ('host-native', 'resume-native') and self.native_menu and self.client is not None and self.host is None
-            if action != 'stop' and not native_host and (self.host is not None or self.client is not None):
+            if action not in ('stop', 'return-menu') and not native_host and (self.host is not None or self.client is not None):
                 raise ValueError('Stop the current session before starting another operation.')
             self.busy = True
             self.error = ''
@@ -92,6 +92,10 @@ class Session:
         self.message = message
 
     def perform(self, action: str, values: dict):
+        if action == 'return-menu':
+            self.stop()
+            self.perform('play', {})
+            return
         if action == 'stop':
             self.stop()
             return

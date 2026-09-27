@@ -4,6 +4,11 @@
 development desktop or a running game. SteamCMD uses a saved login stored in
 GitHub Actions secrets to download Root.
 
+Actions use Node.js 24. Standalone C# tests and the binding generator run on
+.NET 10 LTS. The mod still targets .NET 6 because the pinned BepInEx loader bundles
+that runtime. Updating the game runtime requires separate compatibility testing;
+the CI toolchain upgrade does not update the runtime shipped to players.
+
 - Pull requests run Linux and Windows launcher unit tests, release validation,
   packaging-helper tests, and the standalone multiplayer protocol tests.
 - Pushes to `main` and manual **Run workflow** runs also compile the mod, build
@@ -48,8 +53,7 @@ or Steam Guard shared secret is stored in GitHub.
 
 Steam can expire or revoke the session. If CI requests reauthentication, rerun
 the same setup command, then rerun the failed workflow. This does not guarantee
-indefinite unattended downloads. An authenticated GitHub-hosted run is still
-needed to verify session portability to GitHub's machines.
+indefinite unattended downloads. The saved-session flow has been verified on a GitHub-hosted runner.
 
 ## Building from Steam
 
@@ -68,9 +72,9 @@ Game files and generated bindings stay on the temporary runner. Only the mod
 and normal launcher dependencies enter the player packages. There is no manual
 build-reference archive upload.
 
-The offline generation path was verified locally against the supported Steam
-installation, followed by mod compilation. Authenticated downloading remains
-unverified until the account setup and first hosted run complete.
+The [first successful hosted build](https://github.com/AugusDogus/root-six-player/actions/runs/36350950836)
+verified authenticated downloading, offline binding generation, mod compilation,
+both launcher packages, and the native Windows executable smoke test.
 
 ## Cutting a player release
 

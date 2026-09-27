@@ -1,6 +1,6 @@
 # Make private six-player Root easy to play
 
-Historical delivery plan, retained for context. Some milestones below are superseded by the native menu, Steam networking, and DLC setup. The Cloudflare prototype has been removed; Steam is now the only supported multiplayer transport. The current private demo exposes installed gameplay expansions locally, superseding the earlier entitlement scope below. See [README.md](README.md) for current behavior and validation limits.
+Historical delivery plan, retained for context. Some milestones below are superseded by the native menu, Steam networking, and DLC setup. The Cloudflare prototype has been removed; Steam is now the only supported multiplayer transport. The current private demo exposes installed gameplay expansions locally, superseding the earlier entitlement scope below. See [README.md](README.md) for player instructions and [development notes](docs/development.md) for validation limits.
 
 ## Target experience
 

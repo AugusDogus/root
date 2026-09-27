@@ -14,7 +14,7 @@ LAB = PROJECT / '.lab'
 STEAM = Path.home() / '.local/share/Steam'
 LOADER_URL = 'https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788%2B5b766a3.zip'
 LOADER_SHA256 = 'f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a'
-SDK_VERSION = '6.0.428'
+SDK_VERSION = '10.0.401'
 
 
 def download(url):
@@ -41,8 +41,8 @@ if not (LAB / 'game/BepInEx/core/BepInEx.Unity.IL2CPP.dll').exists():
             raise SystemExit('BepInEx archive contains an invalid path. Loader was not installed.')
         bundle.extractall(LAB / 'game')
 
-if not (LAB / 'sdk/dotnet').exists():
-    releases = json.loads(download('https://builds.dotnet.microsoft.com/dotnet/release-metadata/6.0/releases.json'))
+if not (LAB / 'sdk/sdk' / SDK_VERSION).is_dir():
+    releases = json.loads(download('https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'))
     sdk = next(sdk for release in releases['releases'] for sdk in release.get('sdks', [release['sdk']]) if sdk['version'] == SDK_VERSION)
     package = next(file for file in sdk['files'] if file['rid'] == 'linux-x64' and file['name'].endswith('.tar.gz'))
     archive = download(package['url'])

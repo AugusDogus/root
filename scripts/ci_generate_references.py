@@ -66,7 +66,7 @@ def main():
     prepare(output)
     subprocess.run([args.dotnet, 'build', str(PROJECT / 'tools/ci-interop'), '--no-incremental', '-m:1',
                     f'-p:LoaderDir={output / "BepInEx/core"}', '-p:UseSharedCompilation=false'], check=True)
-    subprocess.run([args.dotnet, str(PROJECT / 'tools/ci-interop/bin/Debug/net6.0/CiInterop.dll'),
+    subprocess.run([args.dotnet, str(PROJECT / 'tools/ci-interop/bin/Debug/net10.0/CiInterop.dll'),
                     str(args.game.resolve()), str(output / 'BepInEx'), PACKAGE['UNITY_VERSION']], check=True)
 
 

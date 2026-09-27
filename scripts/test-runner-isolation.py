@@ -9,13 +9,20 @@ import time
 PROJECT = Path(__file__).resolve().parents[1]
 
 
-def exercise(source):
+def exercise(source, *, reject_budget=False):
     with tempfile.TemporaryDirectory(prefix='root-runner-test-') as temporary:
         root = Path(temporary)
         scripts = root / 'scripts'
         scripts.mkdir()
         runner = scripts / 'run-lab.sh'
         runner.write_text(source)
+        launcher = root / 'launcher'
+        launcher.mkdir()
+        # Exercise the real shell's guard call without depending on this test's
+        # cgroup. Resource validation itself is covered by test-test-budget.py.
+        (launcher / 'test_budget.py').write_text(
+            'def require_test_budget():\n' +
+            ('    raise SystemExit(42)\n' if reject_budget else '    pass\n'))
         lab = root / '.lab'
         (lab / 'game').mkdir(parents=True)
         (lab / 'compatdata/pfx').mkdir(parents=True)
@@ -24,7 +31,8 @@ def exercise(source):
         executable.write_text('#!/bin/sh\ntouch "$TEST_ESCAPED"\n')
         executable.chmod(0o700)
         mock = root / 'xvfb-run'
-        mock.write_text('#!/bin/sh\ntouch "$TEST_READY"\nwhile [ ! -f "$TEST_RELEASE" ]; do sleep 0.02; done\n')
+        mock.write_text('#!/bin/sh\ntouch "$TEST_READY"\n' +
+                       ('' if reject_budget else 'while [ ! -f "$TEST_RELEASE" ]; do sleep 0.02; done\n'))
         mock.chmod(0o700)
         ready, release = root / 'ready', root / 'release'
         invitation = root / 'invitation.json'
@@ -35,6 +43,14 @@ def exercise(source):
         process = subprocess.Popen(['bash', str(runner), 'client-probe'], env=env,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
+            if reject_budget:
+                stdout, stderr = process.communicate(timeout=5)
+                assert process.returncode == 42, ('Runner must propagate budget rejection', stdout, stderr)
+                assert not ready.exists(), 'Rejected budget must not reach the Xvfb launch'
+                assert not (lab / 'run.lock').exists(), 'Budget guard must run before touching the lab'
+                assert not (lab / 'connection.json').exists(), 'Rejected budget must not copy seat credentials'
+                assert not escaped.exists(), 'Rejected budget must not launch the game'
+                return False
             deadline = time.monotonic() + 5
             while not ready.exists():
                 if process.poll() is not None or time.monotonic() > deadline:
@@ -66,7 +82,8 @@ def exercise(source):
 
 
 source = (PROJECT / 'scripts/run-lab.sh').read_text()
+exercise(source, reject_budget=True)
 unwrapped = '#!/usr/bin/env bash\n' + source.split('run_lab() {\n', 1)[1].rsplit('exit 0\n}', 1)[0]
 assert exercise(unwrapped), 'The harmless reproduction must expose the original escape'
 assert not exercise(source), 'The runner must never execute trailing lines after a live edit'
-print('PASS: live-edit escape reproduced; guarded runner stays isolated; invitation copying and cleanup respect the lab lock')
+print('PASS: budget rejection precedes launch; live-edit escape reproduced; guarded runner stays isolated; invitation copying and cleanup respect the lab lock')

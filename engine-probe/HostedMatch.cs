@@ -25,7 +25,10 @@ internal enum ChoiceResult
 internal sealed class HostedMatch
 {
     public TuberMatch Match { get; }
-    public tuber.canis.entities.TuberPlayerEntity[] SeatPlayers { get; }
+    // Drafting replaces the temporary player entity when a faction is chosen.
+    // Resolve through the stable account each time, including privacy checks.
+    public tuber.canis.entities.TuberPlayerEntity[] SeatPlayers =>
+        SeatInitialization.Select(player => Match.PlayersMap[player.accountID]).ToArray();
     public TuberPlayerMatchInitData[] SeatInitialization { get; }
     public MatchThreadV2 Thread { get; }
     public string CheckpointInitialization { get; }
@@ -33,7 +36,11 @@ internal sealed class HostedMatch
     private readonly string?[] completionMessages;
     public string?[] CompletionMessages => completionMessages.ToArray();
     public int PlayerCount => Messages.Length;
+    public MatchSetup PublicSetup => NativeMatchSetup.Read(Match.TuberMatchInitData, SeatInitialization) with
+    { Factions = SeatPlayers.Select(player => (int)player.Faction).ToArray() };
     public MatchLobby Lobby { get; } = new();
+    public MatchChat Chat { get; } = new();
+    public NativeTurnTimers Timers { get; } = new();
     private Il2CppSystem.Threading.Tasks.Task? resignation;
     private readonly HashSet<int> aiSelections = new();
     public bool IsHumanSeat(int seat) => NativeMatchSetup.IsHumanSeat(SeatInitialization[seat]);
@@ -85,6 +92,7 @@ internal sealed class HostedMatch
         {
             JSON.ToJSON(new Canis.messages.sequence.SequenceMessage(null, state.Cast<Canis.messages.IGameMessage>()), false)
         };
+        messages.AddRange(Timers.Snapshot(SeatInitialization[seat].accountID));
         if (completionMessages[seat] is { } completed)
         {
             messages.Add(completed);
@@ -115,27 +123,31 @@ internal sealed class HostedMatch
         var started = false;
         Il2CppSystem.Action<AccountID, DWDEvent> dispatcher = new Action<AccountID, DWDEvent>((account, message) =>
         {
+            var json = Timers.Observe(account, message);
             if (started && Match.HasResigned(account) &&
                 (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<SelectionMessage>() is not null ||
                  message.TryCast<SelectionMessage>() is not null)) return;
             var seat = seats[account.ToString()];
-            var json = JSON.ToJSON(message, false);
             Messages[seat].Add(json);
             if (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<tuber.canis.messages.GameResults>() is not null)
                 completionMessages[seat] = json;
         });
         Match.SetMessageDispatcher(dispatcher);
         Match.Configure(init);
-        Match.UseTimers = false;
-        Match.UseTurnTimers = false;
+        Timers.Attach(Match);
+        NativeTurnTimers.Configure(Match);
+        // Root has already converted the timed-out player to AI. Keep their
+        // private connection available for watching or returning to the menu.
+        Match.SetRemoveIdlePlayer(new Func<AccountID, Il2CppSystem.Threading.Tasks.Task>(_ => Il2CppSystem.Threading.Tasks.Task.CompletedTask));
         Match.messageActionFactory = new ObfuscatedMessageActionFactory().Cast<IMessageActionFactory>();
         Match.Start();
         started = true;
-        // Root can swap the Vagabonds between native accounts. Private seats
-        // follow the chosen faction, independently of the engine's account order.
-        SeatInitialization = chosenFactions.Select(faction =>
-            Match.TuberMatchInitData.TuberPlayers.ToArray().Single(player => player.Faction == faction)).ToArray();
-        SeatPlayers = SeatInitialization.Select(player => Match.PlayersMap[player.accountID]).ToArray();
+        // Native setup supplies stable seats before factions are drafted.
+        // Older saves identify seats by faction, including swapped Vagabonds.
+        var configuredPlayers = Match.TuberMatchInitData.TuberPlayers.ToArray();
+        SeatInitialization = configuredPlayers.All(player => player.metadata.ContainsKey(NativeHostConfiguration.SeatKey))
+            ? configuredPlayers.OrderBy(player => int.Parse(player.metadata[NativeHostConfiguration.SeatKey], System.Globalization.CultureInfo.InvariantCulture)).ToArray()
+            : chosenFactions.Select(faction => configuredPlayers.Single(player => player.Faction == faction)).ToArray();
         Messages = SeatInitialization.Select(player => Messages[seats[player.accountID.ToString()]]).ToArray();
         completionMessages = SeatInitialization.Select(player => completionMessages[seats[player.accountID.ToString()]]).ToArray();
         seats.Clear();

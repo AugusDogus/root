@@ -47,7 +47,6 @@ def main():
                 time.sleep(0.5)
             else:
                 raise TimeoutError('Steam launcher host did not publish invitations and connect its native board.')
-            assert session.host_relay is None and session.client_relay is None
         finally:
             session.stop()
         assert not any((lab / 'client' / name).exists() for name in ('connection.json', 'steam-config.json', 'steam-status.json'))

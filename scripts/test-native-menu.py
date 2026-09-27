@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """Click the native menu on its own muted Xvfb display; never send invitations."""
-import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
-import threading
 import time
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
-from main import lock_data, make_server
-from session import Session
-from steam import BUILD, VERSION
+from native_launcher_test import online_session
 
 
 def wait_for(predicate, seconds=240):
@@ -46,35 +42,22 @@ def main():
     dlc = '--dlc' in sys.argv
     ai = '--ai' in sys.argv
     completed = Path(sys.argv[sys.argv.index('--completed') + 1]).resolve() if '--completed' in sys.argv else None
-    lab = PROJECT / ('.lab/friends-launcher-test' if dlc else '.lab/steam-game-probe')
-    payload = PROJECT / 'launcher/payload'
-    plugin = PROJECT / 'engine-probe/bin/Debug/net6.0/EngineProbe.dll'
-    # Update only the explicitly owned test copies and their matching manifest.
-    shutil.copy2(plugin, payload / plugin.name)
-    manifest = {'build': BUILD, 'version': VERSION, 'plugin_sha256': hashlib.sha256(plugin.read_bytes()).hexdigest()}
-    (payload / 'manifest.json').write_text(json.dumps(manifest))
-    with lock_data(lab):
-        for role in ('host', 'client'):
-            shutil.copy2(plugin, lab / role / 'game/BepInEx/plugins/EngineProbe.dll')
-            (lab / role / 'bindings-ready').touch()
-        (lab / 'prepared.json').write_text(json.dumps(manifest))
-        session = Session(lab, payload, headless=True)
-        import secrets
-        token = secrets.token_urlsafe(32)
-        server = make_server(session, token)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        control = lab / 'client/launcher-control.json'
-        control.write_text(json.dumps({'port': server.server_port, 'token': token}))
+    lab = Path(sys.argv[sys.argv.index('--lab') + 1]).resolve() if '--lab' in sys.argv else PROJECT / '.lab/native-session-probe'
+    with online_session(lab) as session:
         try:
+            probe = lab / 'client/results/online-setup-probe'
+            probe.mkdir(parents=True, exist_ok=True)
+            for name in ('view.txt', 'visual.json', 'error.txt', 'command.txt', 'lobby-view.txt', 'lobby-command.txt', 'blocked-lobby-write.txt'):
+                (probe / name).unlink(missing_ok=True)
             session.perform('play', {})
-            client = session.client
             def healthy():
                 state = session.status()
                 if state['error']:
                     raise RuntimeError(state['error'])
                 return True
             wait_for(lambda: healthy() and (lab / 'client/native-menu-ready').exists())
+            session.assert_launcher_exited()
+            client = session.status()['processId']
             env = display_environment(lab)
             def capture(name):
                 time.sleep(3)
@@ -115,86 +98,87 @@ def main():
             screen('home')
             click(180, 425)
             screen('setup')
+            wait_for(lambda: (probe / 'view.txt').exists())
+            assert (probe / 'view.txt').read_text().startswith('Prefab slots: 6')
+            def setup_visible():
+                if (probe / 'error.txt').exists():
+                    raise RuntimeError((probe / 'error.txt').read_text())
+                try:
+                    visual = json.loads((probe / 'visual.json').read_text())
+                except (FileNotFoundError, json.JSONDecodeError):
+                    return False
+                return visual == {'slots': 6, 'visibleFigures': 6, 'title': 'Six Player'}
+            wait_for(setup_visible)
             capture('native-menu-setup.png')
+            click(160, 765)  # Native Back returns without starting a host.
+            screen('home')
+            assert session.endpoint is None
+            (probe / 'visual.json').unlink(missing_ok=True)
+            click(180, 425)
+            screen('setup')
+            wait_for(setup_visible)
+            # Exercise Root's setup model and its Create Game command. The
+            # isolated fixture supplies factions without testing DLC purchases.
+            values = {'factions': [0, 1, 2, 3, 6, 7], 'controllers': [0] * 6,
+                      'options': {'AILevel': 1, 'AdvancedSetup': 0, 'RandomSuits': 1}}
             if ai:
-                for seat, (x, y) in enumerate(((920, 245), (300, 310), (920, 310), (920, 245)), start=2):
-                    click(520, 245 + seat * 70)
-                    screen('setup-options')
-                    click(x, y)
-                    screen('setup')
-                capture('native-menu-ai-setup.png')
+                values['controllers'] = [0, 0, 1, 1, 1, 1]
             if dlc:
-                def setup_click(x, y):
-                    click(x, y)
-                    time.sleep(3)
-                setup_click(300, 245)  # Host faction.
-                setup_click(920, 500)  # Lord of the Hundreds.
-                screen('setup')
-                setup_click(300, 315)  # Seat 2.
-                setup_click(930, 735)  # Clockwork page.
-                setup_click(920, 245)  # Electric Eyrie.
-                screen('setup')
-                setup_click(900, 245)  # Map.
-                setup_click(300, 310)  # Lake.
-                screen('setup')
-                setup_click(900, 310)  # Exiles and Partisans.
-                setup_click(900, 380)  # Vagabond characters.
-                setup_click(300, 245)  # Electric Eyrie options.
-                setup_click(300, 245)  # Nobility trait.
-                setup_click(280, 735)  # Back to characters and Clockwork.
-                setup_click(920, 245)  # Vagabond.
-                setup_click(920, 500)  # Adventurer.
-                setup_click(280, 735)  # Back to setup.
-                screen('setup')
-                setup_click(900, 450)  # Landmarks.
-                setup_click(300, 375)  # Black Market.
-                setup_click(920, 375)  # Legendary Forge.
-                setup_click(280, 735)
-                setup_click(900, 520)  # Hirelings.
-                setup_click(300, 245)  # Forest Patrol.
-                setup_click(920, 245)  # Popular Band.
-                setup_click(300, 310)  # Vault Keepers.
-                setup_click(280, 735)
-                screen('setup')
-                capture('native-menu-dlc-setup.png')
-            click(920, 735)
-            wait_for(lambda: healthy() and session.host is not None and len(session.invitations) == 6)
+                values.update(factions=[14, 11, 2, 3, 6, 7], controllers=[0, 2, 0, 0, 0, 0])
+                values['options'].update(ChosenMap=2, DeckChoice=1)
+            def command(value):
+                (probe / 'command.txt').write_text(value)
+                wait_for(lambda: healthy() and not (probe / 'command.txt').exists())
+                if (probe / 'error.txt').exists():
+                    raise RuntimeError((probe / 'error.txt').read_text())
+            command(json.dumps(values))
+            command('create')
+            wait_for(lambda: healthy() and session.endpoint is not None and len(session.invitations) == 6)
+            wait_for(lambda: healthy() and (probe / 'lobby-view.txt').exists())
+            from network import exchange
+            human_factions = [faction for faction, controller in zip(values['factions'], values['controllers']) if controller == 0]
+            faction_names = {0: 'MarquiseDeCat', 1: 'EyrieDynasties', 2: 'WoodlandAlliance', 3: 'Vagabond',
+                             6: 'LizardCult', 7: 'RiverfolkCompany', 14: 'LordOfTheHundreds'}
+            for seat, faction in enumerate(human_factions[1:], 1):
+                endpoint = session.endpoint
+                def lobby_request(op, **fields):
+                    return json.loads(exchange(endpoint['port'], json.dumps({'op': op, 'token': endpoint['tokens'][seat], **fields}).encode()))
+                assert lobby_request('join', name=f'Local friend {seat}')['phase'] == 'lobby'
+                assert lobby_request('lobby-join', metadata={'Faction': faction_names[faction]})['ok']
+            time.sleep(1)
+            (probe / 'lobby-command.txt').write_text('start')
             wait_for(lambda: healthy() and 'Native match relay connected to the private host' in (lab / 'client/game/BepInEx/LogOutput.log').read_text())
-            assert session.client is client, 'Hosting must reuse the open game.'
+            assert session.status()['processId'] == client, 'Hosting must reuse the open game.'
             screen('playing')
             if ai:
                 actual = json.loads((lab / 'client/native-board-settings.json').read_text())
-                assert actual['setup']['AI'] == [None, None, 0, 1, 2, 0], actual['setup']
+                assert actual['setup']['AI'] == [None, None, 1, 1, 1, 1], actual['setup']
                 assert sum(bool(invite) for invite in session.invitations) == 1, 'Only the human friend seat should have an invitation'
             if dlc:
                 actual = json.loads((lab / 'client/native-board-settings.json').read_text())
                 assert actual['map'] == 2, actual
-                assert actual['setup']['Factions'] == [14, 11, 2, 3, 6, 7], actual
-                assert actual['setup']['Characters'][3] == 9, actual
+                assert actual['setup']['Factions'] == [14, 2, 3, 6, 7, 11], actual
                 assert actual['setup']['Deck'] == 1, actual
-                assert actual['setup']['BotTraits'][1] == [0], actual
-                assert actual['setup']['Landmarks'] == [4, 5], actual
-                assert set(actual['setup']['Hirelings']) == {16, 20, 21}, actual
-                assert session.invitations[1] == '', 'A bot must not receive an invitation.'
+                assert session.invitations[5] == '', 'A bot must not receive an invitation.'
             # "playing" is published only after Root's loading curtain closes.
             capture('native-menu-host.png')
-            click(310, 55)
+            click(1180, 125)
             screen('seats')
             capture('native-menu-invite.png')
-            click(640, 320 if dlc else 250)
+            click(640, 250)
             screen('friends')
             click(640, 720)
             screen('seats')
             click(640, 720)
             screen('playing')
-            click(490, 55)
+            click(1180, 177)
             screen('match')
             capture('native-menu-table.png')
             if ai:
                 from network import exchange
                 endpoint = session.endpoint
                 reply = json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': endpoint['tokens'][0]}).encode()))
-                assert [seat['State'] for seat in reply['lobby'][2:]] == ['AI · Easy', 'AI · Medium', 'AI · Hard', 'AI · Easy']
+                assert [seat['State'] for seat in reply['lobby'][2:]] == ['AI · Medium'] * 4
                 capture('native-menu-ai-table.png')
             click(240, 650)
             def ready():
@@ -206,10 +190,10 @@ def main():
             click(1020, 650)
             screen('confirm')
             click(850, 590)
-            wait_for(lambda: session.client is not None and session.client is not client and session.client.process.poll() is None)
             wait_for(lambda: (lab / 'client/native-menu-ready').exists())
             screen('home')
-            assert session.host is None, 'Return to menu left the old authority running'
+            assert session.status()['processId'] == client, 'Return to menu restarted Root'
+            assert session.endpoint is None, 'Return to menu left the old authority running'
             assert session.status()['saves'], 'Return to menu lost the hosted save'
             if completed is not None:
                 fixture = lab / 'saves/zz_completed-ui-test.json'
@@ -231,14 +215,7 @@ def main():
             (PROJECT / 'results' / ('native-ai-menu-test.json' if ai else 'native-dlc-menu-test.json' if dlc else 'native-menu-test.json')).write_text(json.dumps(result, indent=2) + '\n')
             print(json.dumps(result), flush=True)
         finally:
-            if session.worker is not None:
-                session.worker.join(timeout=660)
-            session.stop()
             (lab / 'saves/zz_completed-ui-test.json').unlink(missing_ok=True)
-            control.unlink(missing_ok=True)
-            server.shutdown()
-            server.server_close()
-            thread.join()
 
 
 if __name__ == '__main__':

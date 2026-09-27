@@ -31,7 +31,7 @@ def crash_and_resume(project, process, endpoint, checkpoint, log):
     evidence.write_text(json.dumps([reply['messages'] for reply in before], indent=2))
     evidence.chmod(0o600)
     assert checkpoint.is_file() and checkpoint.stat().st_mode & 0o777 == 0o600
-    assert json.loads(checkpoint.read_text())['Version'] == 2
+    assert json.loads(checkpoint.read_text())['Version'] == 4
     pids = []
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():

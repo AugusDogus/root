@@ -19,6 +19,9 @@ internal sealed record MatchSetup
     public int[] Landmarks { get; init; } = Array.Empty<int>();
     public int[] Hirelings { get; init; } = Array.Empty<int>();
     public bool AdvancedSetup { get; init; }
+    public bool FactionDraft { get; init; }
+    public bool CooperativeMode { get; init; }
+    public bool EnableBluff { get; init; }
     public int BotDifficulty { get; init; } = 1;
     public int[][] BotTraits { get; init; } = Enumerable.Range(0, 6).Select(_ => Array.Empty<int>()).ToArray();
     public int VagabotCharacter { get; init; } = 1;
@@ -49,14 +52,16 @@ internal sealed record MatchSetup
         (24, "Warm Sun Prophets"), (25, "Riverfolk Flotilla"), (26, "Furious Protector"),
         (27, "Corvid Spies"), (28, "Sunward Expedition")
     };
-    public static string FactionName(int id) => PlayerFactions.FirstOrDefault(item => item.Id == id).Name ?? $"Faction {id}";
+    public static string FactionName(int id) => id == 4 ? "Choosing faction" : PlayerFactions.FirstOrDefault(item => item.Id == id).Name ?? $"Faction {id}";
     public static bool IsClockwork(int id) => id is >= 10 and <= 13;
     public static readonly string[] BotDifficulties = { "Easy", "Normal", "Challenging", "Nightmare" };
 
-    public string? Validate()
+    public string? Validate(bool pendingLobby = false)
     {
-        if (Factions is null || Factions.Length != 6 || Factions.Distinct().Count() != 6 ||
-            Factions.Any(id => !PlayerFactions.Any(item => item.Id == id)))
+        if (FactionDraft && !AdvancedSetup) return "Faction drafting requires advanced setup.";
+        if (Factions is null || Factions.Length != 6 ||
+            Factions.Where(id => id != 4).Distinct().Count() != Factions.Count(id => id != 4) ||
+            Factions.Any(id => !(id == 4 && (FactionDraft || pendingLobby)) && !PlayerFactions.Any(item => item.Id == id)))
             return "Choose six different playable factions.";
         if (AI is null || AI.Length != 6 || AI.Any(level => level is { } value && !Enum.IsDefined(typeof(AIDifficulty), value)))
             return "Choose Human or Easy, Medium, or Hard AI for each seat.";
@@ -69,7 +74,7 @@ internal sealed record MatchSetup
             return "Choose up to four different traits for each Clockwork bot.";
         if (Enumerable.Range(0, 6).Any(seat => !IsClockwork(Factions[seat]) && BotTraits[seat].Length > 0))
             return "Only Clockwork bots can use Clockwork traits.";
-        if (Factions.Contains(5) && !Factions.Contains(3)) return "A second Vagabond needs a first Vagabond.";
+        if (Factions.Contains(5) && !Factions.Contains(3) && !((FactionDraft || pendingLobby) && Factions.Contains(4))) return "A second Vagabond needs a first Vagabond.";
         if (Characters is null || Characters.Length != 6 || Characters.Any(id => id is < 0 or > 9))
             return "Choose a valid character for each Vagabond.";
         for (var seat = 0; seat < 6; seat++)
@@ -87,10 +92,10 @@ internal sealed record MatchSetup
         return null;
     }
 
-    public static MatchSetup Parse(string json)
+    public static MatchSetup Parse(string json, bool pendingLobby = false)
     {
         var setup = JsonSerializer.Deserialize<MatchSetup>(json) ?? throw new InvalidDataException("Match settings are missing.");
-        if (setup.Validate() is { } error) throw new InvalidDataException(error);
+        if (setup.Validate(pendingLobby) is { } error) throw new InvalidDataException(error);
         return setup;
     }
 }

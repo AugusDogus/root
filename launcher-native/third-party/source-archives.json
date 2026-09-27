@@ -1,0 +1,17 @@
+[
+  {
+    "name": "BepInEx-5b766a3b7f6c164d4798924a93f3acf4db769d06.zip",
+    "url": "https://codeload.github.com/BepInEx/BepInEx/zip/5b766a3b7f6c164d4798924a93f3acf4db769d06",
+    "sha256": "ccea1256ef0552f51be640bf5e38f45667d3f95d609ea95ce386338a952993d0"
+  },
+  {
+    "name": "Il2CppInterop-dbda1cb353b0f4253345dc45136d170b9e50a5a0.zip",
+    "url": "https://codeload.github.com/BepInEx/Il2CppInterop/zip/dbda1cb353b0f4253345dc45136d170b9e50a5a0",
+    "sha256": "96d223a475c885ef08118a3adaee0c2ed5d65edd83fbea9987e5a305f1123ac5"
+  },
+  {
+    "name": "UnityDoorstop-33dab9a6733862eb81869ff08431d9478b28784b.zip",
+    "url": "https://codeload.github.com/NeighTools/UnityDoorstop/zip/33dab9a6733862eb81869ff08431d9478b28784b",
+    "sha256": "a71789ffcb359f6a37c6d2c7bbdd0527231e9db00bf46637693cff88ba7ffb80"
+  }
+]

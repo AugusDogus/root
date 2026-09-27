@@ -103,12 +103,11 @@ def build_windows() -> Path:
     command = [str(runtime / 'python.exe'), windows_path(job), '--noconfirm', '--clean',
                '--onefile', '--windowed', '--name', 'Root Six Player',
                '--icon', windows_path(source / 'assets/launcher.ico'),
-               '--paths', windows_path(source), '--paths', windows_path(source / 'vendor'),
+               '--paths', windows_path(source),
                '--distpath', windows_path(lab / 'dist'), '--workpath', windows_path(lab / 'work'),
                '--specpath', windows_path(lab), '--add-data', f'{windows_path(source / "web")};web',
                '--add-data', f'{windows_path(source / "payload")};payload',
                '--add-data', f'{windows_path(runtime / "LICENSE.txt")};licenses/Python',
-               '--add-data', f'{windows_path(source / "vendor/websocket_client-1.8.0.dist-info/LICENSE")};licenses/websocket-client',
                windows_path(source / 'desktop.py')]
     with windows_process(lab, command) as process:
         code = process.wait(timeout=600)

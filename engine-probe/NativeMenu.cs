@@ -2,6 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using tuber.client.menus.prompts;
+using tuber.client.prompt;
 using Object = UnityEngine.Object;
 
 namespace RootEngineProbe;
@@ -11,8 +12,10 @@ namespace RootEngineProbe;
 internal sealed class NativeMenu
 {
     private readonly string lab;
-    private readonly Action<string?, MatchSetup> startHost;
-    private readonly NativeSetupMenu setupMenu;
+    private readonly Action<string?, MatchSetup, string?> startHost;
+    private readonly NativeOnlineSetupFlow setupMenu;
+    private NativeLobbyFlow? lobby;
+    private NativeChat? chat;
     private MatchSetup hostedSetup = new();
     private readonly Func<(ulong Id, string Name)[]> friends;
     private readonly Func<int, ulong, string> invite;
@@ -23,26 +26,66 @@ internal sealed class NativeMenu
     private ColorBlock colors;
     private bool playing;
     private bool hosting;
+    private bool waitingForPlayers;
     private float nextFind;
+    private float nextReadiness;
+    private string? reportedInteractive;
     private string? failure;
     private NativeMatchMenu? matchMenu;
     public string Screen { get; private set; } = "";
     public bool IsPlaying => playing;
     public void AttachMatch(PrivateClient client, Func<SeatStatus[]> roster, Func<int, bool>? release, Action returnHome)
-        => matchMenu = new(this, client, roster, release, returnHome);
+    {
+        PrivatePlaytestContent.Install();
+        matchMenu = new(this, client, roster, release, returnHome);
+        chat?.Dispose();
+        chat = new NativeChat(client.SendChat);
+        client.ChatChanged = chat.Apply;
+        client.JoinMetadata = new()
+        {
+            ["OwnedProducts"] = tuber.canis.PackerUtils.EnumCollectionToInt32HexString(tuber_canis.data.TuberIAPUtilities.OwnedProducts()),
+            ["clientVersion"] = Application.version, ["clientPlatform"] = Application.platform.ToString()
+        };
+        lobby = new(client.LobbyCommand, returnHome, chat.Attach);
+        client.LobbyRejected = lobby.RejectJoin;
+        client.LobbyChanged = response =>
+        {
+            hostedSetup = client.Setup;
+            hosting = client.Seat == 1;
+            waitingForPlayers = true;
+            if (Screen == "connecting") LobbyToolbar();
+            lobby.Apply(response);
+        };
+        client.LobbyStarted = () => { waitingForPlayers = false; lobby.Dispose(); Connecting("Starting the match…", "Opening the board."); };
+    }
+    private void LobbyToolbar()
+    {
+        Begin(false, "lobby");
+        if (hosting) Button("Invite friends", 955, 10, 240, 44, Seats);
+    }
     public void ReturnToBoard() => Toolbar();
+    public void Reset()
+    {
+        Destroy(); root = null; page = null; chat = null; lobby = null; matchMenu = null;
+        playing = false; hosting = false; waitingForPlayers = false; failure = null; nextFind = 0;
+        reportedInteractive = null;
+    }
     public void InviteSeat(int seat) => Friends(seat, friends(), 0);
 
-    public NativeMenu(string lab, Action<string?, MatchSetup> startHost, Func<(ulong, string)[]> friends, Func<int, ulong, string> invite)
+    public NativeMenu(string lab, Action<string?, MatchSetup, string?> startHost, Func<(ulong, string)[]> friends, Func<int, ulong, string> invite)
     {
         this.lab = lab; this.startHost = startHost; this.friends = friends; this.invite = invite;
-        setupMenu = new(this, setup => Host(null, setup), Home);
+        setupMenu = new(result => Host(null, initialization: Canis.json.JSON.ToJSON(result, false)), Home);
     }
     public void SetHostedSetup(MatchSetup setup) => hostedSetup = setup;
 
     public void Update(float now)
     {
         matchMenu?.Update(now);
+        chat?.Update();
+        setupMenu.Update();
+        UpdateToolbarVisibility();
+        ReportReadiness(now);
         if (root != null || now < nextFind) return;
         nextFind = now + 1;
         var landing = Object.FindObjectOfType<LandingPromptBehaviour>();
@@ -69,7 +112,27 @@ internal sealed class NativeMenu
         root.AddComponent<GraphicRaycaster>();
         Home();
         if (failure is { } error) Error(error);
-        File.WriteAllText(Path.Combine(lab, "native-menu-ready"), "ready");
+    }
+
+    private void ReportReadiness(float now)
+    {
+        if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1" || now < nextReadiness) return;
+        nextReadiness = now + 0.25f;
+        var interactive = "";
+        var events = UnityEngine.EventSystems.EventSystem.current;
+        if (events != null && root != null && page != null && page.GetComponentInChildren<Button>() is { } button)
+        {
+            var rect = button.GetComponent<RectTransform>();
+            var point = RectTransformUtility.WorldToScreenPoint(null, rect.TransformPoint(rect.rect.center));
+            var pointer = new UnityEngine.EventSystems.PointerEventData(events) { position = point };
+            var hits = new Il2CppSystem.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+            events.RaycastAll(pointer, hits);
+            if (hits.Count > 0 && hits[0].gameObject.transform.IsChildOf(page.transform)) interactive = Screen;
+        }
+        if (interactive == reportedInteractive) return;
+        reportedInteractive = interactive;
+        File.WriteAllText(Path.Combine(lab, "native-menu-interactive"), interactive);
+        if (interactive != "") File.WriteAllText(Path.Combine(lab, "native-menu-ready"), "ready");
     }
 
     public void Home()
@@ -77,18 +140,18 @@ internal sealed class NativeMenu
         Begin(false, "home");
         Text("Six Player", 28, 290, 340, 42, 30);
         Text("Private games with Steam friends", 28, 329, 390, 30, 19);
-        Button("Host a game", 28, 380, 340, 66, setupMenu.Show);
+        Button("Host a game", 28, 380, 340, 66, () => { Begin(false, "setup"); setupMenu.Show(); });
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.3.0 · Friends' playtest", 28, 635, 410, 32, 18);
+        Text("Version 0.7.0 · Friends' playtest", 28, 635, 410, 32, 18);
         Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
-    private void Host(string? save, MatchSetup? setup = null)
+    private void Host(string? save, MatchSetup? setup = null, string? initialization = null)
     {
-        Connecting("Starting your game…", "Invite your friends once the board opens.");
-        startHost(save, setup ?? new MatchSetup());
+        Connecting(save is null ? "Creating your lobby…" : "Resuming your game…", "Preparing your private host.");
+        startHost(save, setup ?? new MatchSetup(), initialization);
     }
 
     private void Waiting()
@@ -152,29 +215,53 @@ internal sealed class NativeMenu
 
     private void Toolbar()
     {
+        if (!playing) { LobbyToolbar(); return; }
         Begin(false, "playing");
-        if (hosting) Button("Invite friends", 215, 10, 185, 44, Seats);
-        if (matchMenu is { } controls) Button("Match", 415, 10, 165, 44, controls.Show);
+        if (hosting) Button("Invite friends", -195, 80, 185, 44, Seats);
+        if (matchMenu is { } controls) Button("Match", -195, hosting ? 132 : 80, 185, 44, controls.Show);
+        // Anchor to the edge below Root's own top-right controls at any aspect ratio.
+        if (page != null)
+            foreach (var child in page.GetComponentsInChildren<RectTransform>())
+                if (child.gameObject != page) child.anchorMin = child.anchorMax = Vector2.one;
+        UpdateToolbarVisibility();
+    }
+
+    private void UpdateToolbarVisibility()
+    {
+        if (Screen != "playing" || page == null) return;
+        // Root's prompt scopes include selection, combat, information, settings,
+        // and loading curtains. Keep private controls out of all those overlays.
+        var covered = Object.FindObjectsOfType<TuberPrompter>().Any(prompter =>
+        {
+            if (!prompter.IsPrompting) return false;
+            var scopes = prompter.GetScopes();
+            for (var index = 0; index < scopes.Count; index++)
+                if (scopes[index] >= TuberModalScope.PlaymatShop) return true;
+            return false;
+        });
+        if (page.activeSelf == covered) page.SetActive(!covered);
     }
 
     private void Seats()
     {
         Begin(true, "seats");
         Text("Invite Steam friends", 300, 65, 680, 65, 38);
-        Text("Choose a faction for your friend", 300, 125, 680, 45, 23);
+        Text("Choose a seat for your friend", 300, 125, 680, 45, 23);
         for (var index = 0; index < 5; index++)
         {
             var seat = index + 2;
             if (!hostedSetup.IsHumanSeat(seat - 1)) continue;
-            Button(MatchSetup.FactionName(hostedSetup.Factions[seat - 1]), 380, 195 + index * 72, 520, 60, () => Friends(seat, friends(), 0));
+            Button(hostedSetup.Factions[seat - 1] == 4 ? $"Open seat {seat}" : MatchSetup.FactionName(hostedSetup.Factions[seat - 1]),
+                380, 195 + index * 72, 520, 60, () => Friends(seat, friends(), 0));
         }
-        Button("Back to game", 460, 675, 360, 60, Toolbar);
+        Button(playing ? "Back to game" : "Back to lobby", 460, 675, 360, 60, Toolbar);
     }
 
     private void Friends(int seat, (ulong Id, string Name)[] people, int offset)
     {
         Begin(true, "friends");
-        Text($"Invite as {MatchSetup.FactionName(hostedSetup.Factions[seat - 1])}", 300, 70, 680, 65, 36);
+        Text(hostedSetup.Factions[seat - 1] == 4 ? $"Invite to seat {seat}" : $"Invite as {MatchSetup.FactionName(hostedSetup.Factions[seat - 1])}",
+            300, 70, 680, 65, 36);
         Text("Your friend needs the six-player game open.", 300, 135, 680, 50, 21);
         if (people.Length == 0) Text("No Steam friends found. Check Steam and try again.", 300, 240, 680, 110, 25);
         for (var index = offset; index < Math.Min(offset + 5, people.Length); index++)
@@ -191,7 +278,7 @@ internal sealed class NativeMenu
         Begin(true, "invitation-result");
         Text(result, 280, 240, 720, 180, 28);
         Button("Invite another friend", 420, 475, 440, 65, Seats);
-        Button("Back to game", 460, 580, 360, 60, Toolbar);
+        Button(playing ? "Back to game" : "Back to lobby", 460, 580, 360, 60, Toolbar);
     }
 
     public void Notice(string title, string message)
@@ -199,7 +286,8 @@ internal sealed class NativeMenu
         Begin(true, "notice");
         Text(title, 260, 130, 760, 70, 34);
         Text(message, 200, 230, 880, 260, 24);
-        Button(playing ? "Back to game" : "Back to menu", 460, 600, 360, 62, playing ? Toolbar : Home);
+        Button(playing ? "Back to game" : waitingForPlayers ? "Back to lobby" : "Back to menu", 460, 600, 360, 62,
+            playing || waitingForPlayers ? Toolbar : Home);
     }
 
     public void Error(string message, Action? reconnect = null, Action? returnHome = null)
@@ -211,7 +299,23 @@ internal sealed class NativeMenu
         Text(message, 260, 230, 760, 280, 24);
         if (reconnect is not null) Button("Reconnect", 460, 460, 360, 62, reconnect);
         if (returnHome is not null) Button("Return to menu", 460, 555, 360, 62, returnHome);
-        Button("Quit game", 460, 650, 360, 62, Application.Quit);
+        DiagnosticsButton(250, 650);
+        Button("Quit game", 670, 650, 360, 62, Application.Quit);
+    }
+
+    internal void DiagnosticsButton(float x, float y)
+    {
+        TMP_Text? confirmation = null;
+        Button("Copy diagnostics", x, y, 360, 55, () =>
+        {
+            var report = SupportDiagnostics.Create(Application.platform.ToString(),
+                Application.version, Application.unityVersion, UnityEngine.Screen.width, UnityEngine.Screen.height, playing, hosting, Screen);
+            GUIUtility.systemCopyBuffer = report;
+            if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1")
+                File.WriteAllText(Path.Combine(lab, "diagnostics-copy-verified"), (GUIUtility.systemCopyBuffer == report).ToString());
+            if (confirmation != null) confirmation.text = "Copied. Paste this when reporting the problem.";
+        });
+        confirmation = Text("No saves, chat, or invitation details are copied.", x - 25, y + 57, 410, 32, 16);
     }
 
     private void Paging(int offset, int count, Action<int> select)
@@ -285,5 +389,5 @@ internal sealed class NativeMenu
         text.fontSizeMax = Math.Min(32, height / 2);
     }
 
-    public void Destroy() { if (root != null) Object.Destroy(root); }
+    public void Destroy() { chat?.Dispose(); lobby?.Dispose(); if (root != null) Object.Destroy(root); }
 }

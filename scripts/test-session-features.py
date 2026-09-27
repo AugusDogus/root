@@ -68,7 +68,7 @@ def main():
                     # The pre-AI release used this same native save shape with
                     # version 1 and no configured-AI seat metadata.
                     legacy = json.loads(save.read_text())
-                    assert legacy['Version'] == 2
+                    assert legacy['Version'] == 4
                     legacy['Version'] = 1
                     save.write_text(json.dumps(legacy))
                     game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=save, resume=True)

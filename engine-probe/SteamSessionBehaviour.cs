@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace RootEngineProbe;
 
-// Both platforms run this in Root's own Steam context, not in the Python launcher.
+// Root owns its multiplayer session and the lifetime of its separate rules process.
 public sealed class SteamSessionBehaviour : MonoBehaviour
 {
     private readonly Stopwatch clock = new();
@@ -23,20 +23,30 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
     private (ulong Id, string Name)[] friends = Array.Empty<(ulong, string)>();
     private Vector2 scroll;
     private NativeMenu? menu;
-    private Task? startingHost;
+    private Task<AuthorityEndpoint>? startingHost;
+    private PrivateSession? session;
+    private dwd.core.commands.Command? leavingMatch;
+    private bool cleaned;
     private bool reconnecting;
     private Task? returningHome;
     public SteamSessionBehaviour(IntPtr pointer) : base(pointer) { }
     public void Start()
     {
         clock.Start();
-        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "steam-menu")
-            menu = new NativeMenu(lab, (save, setup) =>
+        UnityEngine.Object.DontDestroyOnLoad(gameObject);
+        session = new PrivateSession(lab);
+        File.Delete(Path.Combine(lab, "session-command.txt"));
+        Status("menu");
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") is "steam-menu" or "steam-menu-test" or "steam-online-test")
+        {
+            menu = new NativeMenu(lab, (save, setup, initialization) =>
             {
                 if (host is not null || guest is not null || accepted is not null || startingHost is not null)
                     throw new InvalidOperationException("A match is already starting. Close Root before starting another.");
-                startingHost = LauncherControl.StartHost(lab, save, setup);
+                startingHost = session.StartHost(save, setup, initialization);
+                Status("starting");
             }, () => invitations?.Friends().OrderBy(friend => friend.Name).ToArray() ?? Array.Empty<(ulong, string)>(), SendInvitation);
+        }
         Application.targetFrameRate = Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1" ? 60 : 20;
         if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1") QualitySettings.SetQualityLevel(0, true);
     }
@@ -45,8 +55,29 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1") AudioListener.volume = 0;
         try
         {
+            if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1")
+            {
+                var command = Path.Combine(lab, "session-command.txt");
+                if (File.Exists(command) && File.ReadAllText(command) == "quit") { File.Delete(command); Application.Quit(); return; }
+            }
+            if (returningHome is { } returning)
+            {
+                if (!returning.IsCompleted) return;
+                returningHome = null;
+                returning.GetAwaiter().GetResult();
+                leavingMatch = UnityEngine.Object.FindObjectOfType<tuber.client.match.behaviours.TuberEntitiesProvider>() != null
+                    ? new tuber.client.match.commands.TuberExitMatch(false)
+                    : new TuberChangeScene(TuberChangeScene.Landing, true);
+                dwd.core.commands.CommandExecutor.Get().Execute(leavingMatch);
+            }
+            if (leavingMatch is { } leaving)
+            {
+                if (!leaving.Completed) return;
+                leavingMatch = null;
+                menu?.Reset();
+                Status("menu");
+            }
             menu?.Update((float)clock.Elapsed.TotalSeconds);
-            if (returningHome is { IsCompleted: true }) { returningHome.GetAwaiter().GetResult(); returningHome = null; }
             if (error is not null) return;
             if (api is null)
             {
@@ -61,9 +92,10 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
             }
             if (startingHost is { IsCompleted: true } && api is { } hostApi)
             {
-                startingHost.GetAwaiter().GetResult();
-                InitializeHost(hostApi);
+                var readyHost = startingHost;
                 startingHost = null;
+                InitializeHost(hostApi, readyHost.GetAwaiter().GetResult());
+                Status("hosting");
             }
             if (accepted is { } invitation && guest is null && host is null && api is { } ready)
             {
@@ -73,6 +105,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
                 message = $"Connecting to Steam host as seat {invitation.Seat}…";
                 menu?.Connecting("Joining your friends…", "Opening your seat at the table.");
             }
+            if (session?.HostExited == true) throw new IOException("The private host exited. Return to the menu to resume your saved match.");
             host?.Tick();
             guest?.Tick();
             if (guest?.Reconnecting == true)
@@ -83,13 +116,19 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
             }
             else if (reconnecting) { reconnecting = false; menu?.ReturnToBoard(); }
             client?.Update((float)clock.Elapsed.TotalSeconds);
+            if (client is not null && host is not null)
+            {
+                hostedSetup = client.Setup;
+                menu?.SetHostedSetup(hostedSetup);
+            }
             if (client?.ReceivedMessages > 0 && UnityEngine.Object.FindObjectOfType<tuber.client.match.behaviours.TuberEntitiesProvider>()?.TuberEntities?.allPlayers.Count == 6)
                 menu?.Playing(host is not null);
         }
         catch (Exception failure)
         {
             error = failure.Message;
-            menu?.Error(error, accepted is not null ? Reconnect : null, () => returningHome = LauncherControl.ReturnHome(lab));
+            Status("error");
+            menu?.Error(error, accepted is not null ? Reconnect : null, ReturnHome);
             File.WriteAllText(Path.Combine(lab, "steam-status.json"), JsonSerializer.Serialize(new { error }));
             // Keep the host and its saved match alive while a player reads the error.
             guest?.Dispose();
@@ -116,16 +155,19 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         }
         else message = "Ready for a Steam invitation. Ask your host to invite you, then click Join in Steam.";
     }
-    private void InitializeHost(SteamNative ready)
+    private void InitializeHost(SteamNative ready, AuthorityEndpoint? configuration = null)
     {
-        using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(lab, "steam-config.json")));
-        var port = config.RootElement.GetProperty("port").GetInt32();
-        var tokens = config.RootElement.GetProperty("tokens").Deserialize<string[]>() ?? throw new InvalidDataException("Missing host seats.");
-        hostedSetup = config.RootElement.TryGetProperty("setup", out var settings) ? MatchSetup.Parse(settings.GetRawText()) : new();
+        // Retained only for standalone development probes that start their own host.
+        configuration ??= JsonSerializer.Deserialize<AuthorityEndpoint>(File.ReadAllText(Path.Combine(lab, "steam-config.json")))
+            ?? throw new InvalidDataException("Missing host configuration.");
+        var port = configuration.Port;
+        var tokens = configuration.Tokens;
+        hostedSetup = configuration.Setup.ValueKind == JsonValueKind.Object
+            ? MatchSetup.Parse(configuration.Setup.GetRawText(), pendingLobby: configuration.Pending) : new();
         menu?.SetHostedSetup(hostedSetup);
         host = new(ready, port, tokens, Enumerable.Range(2, 5).Where(seat => hostedSetup.IsHumanSeat(seat - 1)).ToArray(),
             identity => invitations?.NameFor(identity) ?? "Steam friend");
-        client = new(Path.Combine(lab, "connection.json")) { DisplayName = MatchLobby.CleanName(invitations?.NameFor(host.Identity) ?? "Host") };
+        client = new(port, tokens[0]) { DisplayName = MatchLobby.CleanName(invitations?.NameFor(host.Identity) ?? "Host") };
         AttachControls();
         var texts = new[] { "" }.Concat(Enumerable.Range(2, 5).Select(seat => hostedSetup.IsHumanSeat(seat - 1) ? host.Invitation(seat).Encode() : "")).ToArray();
         File.WriteAllText(Path.Combine(lab, "steam-status.json"), JsonSerializer.Serialize(new { invitations = texts }));
@@ -152,11 +194,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
             var owner = host.Owner(seat.Seat);
             return seat with {
                 State = seat.State == "Resigned" ? seat.State : host.Connected(seat.Seat) ? "Connected" : owner is null ? "Waiting" : "Disconnected" };
-        }).ToArray(), host is { } hosting ? hosting.ReleaseSeat : null, () =>
-        {
-            returningHome = LauncherControl.ReturnHome(lab);
-            menu?.Connecting("Returning to the menu…", "Your hosted match remains saved.");
-        });
+        }).ToArray(), host is { } hosting ? hosting.ReleaseSeat : null, ReturnHome);
     }
     private string SendInvitation(int seat, ulong friend)
     {
@@ -166,7 +204,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
     }
     public void OnGUI()
     {
-        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "steam-menu") return;
+        if (menu is not null) return;
         if (error is not null) { GUI.Box(new Rect(20, 20, 760, 100), error); return; }
         if (host is null)
         {
@@ -196,13 +234,40 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         }
         GUI.EndScrollView();
     }
+    private void ReturnHome()
+    {
+        if (returningHome is not null || leavingMatch is not null) return;
+        client?.Stop(); client = null;
+        guest?.Dispose(); guest = null;
+        host?.Dispose(); host = null;
+        accepted = null; error = null; reconnecting = false;
+        returningHome = session?.Stop() ?? Task.CompletedTask;
+        if (startingHost is { } abandoned)
+            _ = abandoned.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+        startingHost = null;
+        menu?.Connecting("Returning to the menu…", "Your hosted match remains saved.");
+        Status("returning");
+    }
+    private void Status(string phase)
+    {
+        if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1") return;
+        var path = Path.Combine(lab, "session-status.json");
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(new { phase, error = error ?? "", save = session?.Save, processId = Environment.ProcessId }));
+        File.Move(temporary, path, true);
+    }
     private void Cleanup()
     {
+        if (cleaned) return;
+        cleaned = true;
         client?.Stop(); client = null;
         guest?.Dispose(); guest = null;
         host?.Dispose(); host = null;
         invitations?.Dispose(); invitations = null;
         api?.Dispose(); api = null;
+        try { session?.Stop().GetAwaiter().GetResult(); Status("stopped"); }
+        catch (Exception failure) { BepInEx.Logging.Logger.CreateLogSource("Private Session").LogError($"Host cleanup failed: {failure}"); }
     }
+    public void OnApplicationQuit() => Cleanup();
     public void OnDestroy() { Cleanup(); menu?.Destroy(); }
 }

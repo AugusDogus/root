@@ -115,7 +115,7 @@ def run_case(lab, name, setup):
             if not active:
                 raise RuntimeError('No human selection or game end after waiting 30 seconds for native AI')
             if step >= (15 if name.startswith('ai-') else 60) and checkpoint is not None and 'recovery' not in report:
-                assert json.loads(checkpoint.read_text())['Version'] == 2, 'New saves must reject older mods without AI seat ownership'
+                assert json.loads(checkpoint.read_text())['Version'] == 4, 'New saves must reject older mods without AI seat ownership'
                 snapshots = {seat: request(seat, {'op': 'join'}) for seat in humans}
                 # Snapshot only at a pending human choice, after native AI has settled.
                 old_endpoint = endpoint

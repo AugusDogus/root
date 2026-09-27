@@ -15,7 +15,6 @@ import zipfile
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
 from main import lock_data, make_server, reopen_launcher
-from network import parse_invite, relay_url
 from prepare import extract_loader, prepare
 from session import Session
 from steam import BUILD, VERSION, discover, vdf_pairs
@@ -101,7 +100,9 @@ class LauncherTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Open the six-player game menu'):
                     session.perform('host-native', {})
                 session.perform('play', {})
-                session.start('host-native', {})
+                initialization = {'AdvancedSetup': True, 'AdsetDisableDraft': False,
+                                  'DoNotShufflePlayers': False, 'options': {'randomSuits': 'true'}}
+                session.start('host-native', {'initialization': json.dumps(initialization)})
                 session.worker.join()
                 self.assertEqual(session.error, '')
                 self.assertIs(session.client, game)
@@ -110,6 +111,8 @@ class LauncherTests(unittest.TestCase):
                 config = json.loads((data / 'client/steam-config.json').read_text())
                 self.assertNotIn('controlToken', config)
                 self.assertEqual(config['tokens'], endpoint['tokens'])
+                self.assertEqual(json.loads((data / 'host/native-setup.json').read_text()), initialization)
+                self.assertNotIn('initialization', config)
                 with self.assertRaisesRegex(ValueError, 'Stop the current session'):
                     session.start('host-native', {})
 
@@ -164,8 +167,10 @@ class LauncherTests(unittest.TestCase):
                 session.stop()
                 self.assertFalse((data / 'host/match-setup.json').exists())
                 (data / 'host/match-setup.json').write_text('{"Map":0}')
+                (data / 'host/native-setup.json').write_text('{"AdvancedSetup":false}')
                 session.perform('resume', {'save': save, 'setup': '{"Map":0}'})
                 self.assertFalse((data / 'host/match-setup.json').exists())
+                self.assertFalse((data / 'host/native-setup.json').exists())
                 self.assertTrue(launch.call_args_list[-2].kwargs['resume'])
                 self.assertEqual(json.loads((data / 'client/steam-config.json').read_text())['setup'], setup)
                 session.stop()
@@ -185,14 +190,24 @@ class LauncherTests(unittest.TestCase):
             fake.endpoint.return_value = endpoint
             fake.process.poll.return_value = None
             session = Session(data, payload, True)
-            with patch('session.discover'), patch('session.proton_paths'), patch('session.GameProcess', return_value=fake) as launch, patch('session.HostRelay') as relay:
+            with patch('session.discover'), patch('session.proton_paths'), patch('session.GameProcess', return_value=fake) as launch:
+                with self.assertRaisesRegex(ValueError, 'Steam'):
+                    session.perform('host', {'transport': 'cloudflare'})
+                with self.assertRaises(ValueError):
+                    session.perform('join', {'invite': json.dumps({'relay': 'https://relay.example'})})
+                launch.assert_not_called()
                 session.perform('host', {'transport': 'steam'})
                 self.assertEqual([call.args[2] for call in launch.call_args_list], ['server', 'steam-host'])
-                relay.assert_not_called()
                 config = json.loads((data / 'client/steam-config.json').read_text())
                 self.assertEqual(config, {'port': endpoint['port'], 'tokens': endpoint['tokens']})
                 self.assertNotIn('controlToken', config)
-                invite = f'root6:3:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
+                endpoint['pending'] = True
+                session = Session(data, payload, True)
+                session.perform('host', {'transport': 'steam'})
+                pending = json.loads((data / 'client/steam-config.json').read_text())
+                self.assertTrue(pending['pending'])
+                self.assertNotIn('controlToken', pending)
+                invite = f'root6:6:{BUILD}:{0x0110000100000001}:501:2:' + 'a' * 32
                 session = Session(data, payload, True)
                 session.perform('join', {'invite': invite})
                 self.assertEqual(launch.call_args.args[2], 'steam-client')
@@ -205,10 +220,10 @@ class LauncherTests(unittest.TestCase):
                     session.perform('host', {'transport': 'steam'})
 
     def test_steam_invitation_validation(self):
-        invite = f'root6:3:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
+        invite = f'root6:6:{BUILD}:{0x0110000100000001}:501:6:' + 'a' * 32
         self.assertEqual(validate_invite(invite), invite)
         for value in (invite + '\n', invite.replace(':501:', ':0:'), invite.replace(':6:', ':1:'),
-                      invite.replace(BUILD, '0'), invite.replace('root6:3:', 'root6:2:'), invite + ':extra', invite.replace(str(0x0110000100000001), '1')):
+                      invite.replace(BUILD, '0'), invite.replace('root6:6:', 'root6:3:'), invite + ':extra', invite.replace(str(0x0110000100000001), '1')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_invite(value)
 
@@ -236,16 +251,6 @@ class LauncherTests(unittest.TestCase):
             file = Path(temp) / 'libraries.vdf'
             file.write_text(r'"path" "D:\\Steam Library"')
             self.assertEqual(vdf_pairs(file), [('path', r'D:\Steam Library')])
-
-    def test_invitation_validation(self):
-        invite = {'version': VERSION, 'build': BUILD, 'relay': 'https://relay.example',
-                  'room': 'a' * 32, 'token': 'b' * 32, 'seat': 2}
-        self.assertEqual(parse_invite(json.dumps(invite)), invite)
-        for field, value in [('seat', True), ('token', 'bad'), ('build', 'old'), ('relay', 'http://public.example'),
-                             ('relay', 'https://user:password@example.com'), ('room', '../host')]:
-            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
-                parse_invite(json.dumps({**invite, field: value}))
-        self.assertEqual(relay_url('http://127.0.0.1:8787', local=True), 'http://127.0.0.1:8787')
 
     def test_archive_traversal_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

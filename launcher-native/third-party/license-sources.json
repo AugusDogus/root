@@ -1,0 +1,107 @@
+[
+  {
+    "name": "BepInEx",
+    "url": "https://raw.githubusercontent.com/BepInEx/BepInEx/5b766a3b7f6c164d4798924a93f3acf4db769d06/LICENSE",
+    "sha256": "f2ceca48af033d8adf337a8f9453e633cfad10a1f8c9fec2e5ae55a2d8ffe952"
+  },
+  {
+    "name": "Il2CppInterop",
+    "url": "https://raw.githubusercontent.com/BepInEx/Il2CppInterop/dbda1cb353b0f4253345dc45136d170b9e50a5a0/LICENSE",
+    "sha256": "5eecce16e59e24ddd9d3712012517a033f2cd0459ace22b43d5659d4624abff0"
+  },
+  {
+    "name": "UnityDoorstop",
+    "url": "https://raw.githubusercontent.com/NeighTools/UnityDoorstop/33dab9a6733862eb81869ff08431d9478b28784b/LICENSE",
+    "sha256": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331"
+  },
+  {
+    "name": "Cpp2IL",
+    "url": "https://raw.githubusercontent.com/SamboyCoding/Cpp2IL/558ddd98642010897d54316b51fbaa7889fda093/LICENSE",
+    "sha256": "1a80d1b99e958385045da1e383a105895d1c997ef2b36448430dbfe3763fe670"
+  },
+  {
+    "name": "HarmonyX",
+    "url": "https://raw.githubusercontent.com/BepInEx/HarmonyX/v2.10.2/LICENSE",
+    "sha256": "7e54ab4766ef78637a05fb3454663a66de6bb960dbd4c7088890ed76b0844f36"
+  },
+  {
+    "name": "MonoMod",
+    "url": "https://raw.githubusercontent.com/MonoMod/MonoMod/v22.07.31.01/LICENSE",
+    "sha256": "0b64833222e3c6a426ad29362d26334619fe02eaf2b89ea9c37805521896c920"
+  },
+  {
+    "name": "MonoMod-Backports",
+    "url": "https://raw.githubusercontent.com/MonoMod/MonoMod/a1b82852b2574742776af08818487b90b0bfab93/LICENSE",
+    "sha256": "0b64833222e3c6a426ad29362d26334619fe02eaf2b89ea9c37805521896c920"
+  },
+  {
+    "name": "AsmResolver",
+    "url": "https://raw.githubusercontent.com/Washi1337/AsmResolver/124e161a9bc0ebb83b4d97276ae3da3c9cfe2fc5/LICENSE.md",
+    "sha256": "1c967bb945d9e86f79e49dda29e834d49ff3cb203c9a98878e7661b3de7a5559"
+  },
+  {
+    "name": "AssetRipper-CIL",
+    "url": "https://raw.githubusercontent.com/AssetRipper/AssetRipper.CIL/06216e69825ccd6536dc17e9ca81c4d539ce9321/LICENSE",
+    "sha256": "039cd624a13919c3af1aec3ce2217c3f50d6e3053f6e9ef64d9cf37e12812a76"
+  },
+  {
+    "name": "Capstone-NET",
+    "url": "https://raw.githubusercontent.com/ds5678/Capstone.NET/b90e380c14e857865c94a355954236e678bd557c/LICENSE",
+    "sha256": "79463fa3b9facda0f90e33eda09ff57c6c4d5620ba8b01e5c48a68834e20de4e"
+  },
+  {
+    "name": "Disarm",
+    "url": "https://raw.githubusercontent.com/SamboyCoding/Disarm/8574010015c8c56bb7faad7e407c50b0abe9cc72/LICENSE",
+    "sha256": "dfe5ef7511938e4d23b12c80f38e966a7993aee60744ab72a947bed7b24963b8"
+  },
+  {
+    "name": "Iced",
+    "url": "https://raw.githubusercontent.com/icedland/iced/v1.21.0/LICENSE.txt",
+    "sha256": "93a47598376fd3f276b631e75149340087153c6ff1635a53c5790249e9124e2d"
+  },
+  {
+    "name": "Mono-Cecil",
+    "url": "https://raw.githubusercontent.com/jbevain/cecil/0.11.4/LICENSE.txt",
+    "sha256": "13d58ecbed676511c0c4c4009bff107025e50007ff5e7901dc562700ec62509e"
+  },
+  {
+    "name": "Dobby",
+    "url": "https://raw.githubusercontent.com/BepInEx/Dobby/v1.0.5/LICENSE",
+    "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+  },
+  {
+    "name": "Dotnet",
+    "url": "https://raw.githubusercontent.com/BepInEx/dotnet-runtime/0ec02c8c96e2eda06dc5b5edfdbdba0f36415082/LICENSE.TXT",
+    "sha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310"
+  },
+  {
+    "name": "Dotnet-third-party",
+    "url": "https://raw.githubusercontent.com/BepInEx/dotnet-runtime/0ec02c8c96e2eda06dc5b5edfdbdba0f36415082/THIRD-PARTY-NOTICES.TXT",
+    "sha256": "55ff71c32f96483c2f4e061eb78ee9bf3d8d562d00143c67b361bb4ce989fe44"
+  },
+  {
+    "name": "AssetRipper-Primitives",
+    "url": "https://raw.githubusercontent.com/AssetRipper/AssetRipper.Primitives/d759b3db98bf2a1cb8c2181faf5d405610aac585/License.md",
+    "sha256": "dae6148ff7ad3331a6380a2ce0cbb87f71b8f177891aba1661b1d3a6fe52d5de"
+  },
+  {
+    "name": "AssetRipper-uTinyRipper",
+    "url": "https://raw.githubusercontent.com/AssetRipper/AssetRipper.Primitives/d759b3db98bf2a1cb8c2181faf5d405610aac585/Licenses/uTinyRipper.md",
+    "sha256": "4bcfd56e4cf313d10cc6a0a3a4a9862076a40b430bb51efe9e9c827ff5c94ffe"
+  },
+  {
+    "name": "SemanticVersioning",
+    "url": "https://raw.githubusercontent.com/adamreeve/semver.net/c52c9d4c5d34a6a3bb6ff45f7276d8b6e951a42d/LICENSE",
+    "sha256": "26a00bad0d14ca2fc93c10398d477fa9609d6fd36068867de53384218c1f64a3"
+  },
+  {
+    "name": "GPL-3.0",
+    "url": "https://www.gnu.org/licenses/gpl-3.0.txt",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  {
+    "name": "Capstone",
+    "url": "https://raw.githubusercontent.com/ds5678/Capstone.NET/b90e380c14e857865c94a355954236e678bd557c/Gee.External.Capstone/runtimes/LICENSE.TXT",
+    "sha256": "65e9ed46a59976eda8f5bd1ea79a680dea38dd299c760bc9a8d87a764ef5029b"
+  }
+]

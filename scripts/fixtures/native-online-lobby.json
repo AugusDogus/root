@@ -1,0 +1,30 @@
+{
+  "name": "CreateLobbyGame",
+  "value": {
+    "name": "Six Player test",
+    "numberOfAIPlayers": 4,
+    "numberOfPlayers": 2,
+    "matchType": "Live",
+    "password": "",
+    "playerOptions": {
+      "clientVersion": "2.1.5.2761",
+      "clientPlatform": "WindowsPlayer",
+      "Faction": "MarquiseDeCat",
+      "OwnedProducts": "20"
+    },
+    "options": {
+      "AIDifficulty": "1",
+      "Timers": "300",
+      "AdvancedSetup": "False",
+      "ChosenDeck": "Standard",
+      "ChosenMap": "Fall",
+      "RandomFactions": "False",
+      "RandomSuits": "False",
+      "AIPlayerMetadata.0": "2;;1;0;;0;2F;24",
+      "AIPlayerMetadata.1": "3;;1;0;;0;2F;24",
+      "AIPlayerMetadata.2": "6;;1;0;;0;2F;24",
+      "AIPlayerMetadata.3": "7;;1;0;;0;2F;24"
+    },
+    "matchInitData": "{\"ScoreToWin\":30,\"PlaymatTurnIndicator\":0,\"TuberPlayers\":[],\"MatchTurnIndicator\":0,\"DeckStacking\":[],\"DeckNumberToNotShuffle\":0,\"FilterFromDeck\":[],\"AddToDeck\":[],\"SkipRuins\":false,\"ScoreForBuildings\":[],\"SpecialClearings\":[],\"TutorialBannerFaction\":\"Invalid\",\"DiagnosticMode\":false,\"ChosenMap\":\"Fall\",\"ChosenDeck\":\"Standard\",\"UnlimitedItemSupply\":false,\"AdvancedSetup\":false,\"AdsetDisableDraft\":false,\"EnableBluff\":true,\"Hirelings\":false,\"HirelingsList\":[],\"AllowedExpansions\":[\"BaseGame\",\"ClockworkFactions\",\"RiverfolkExpansion\",\"TheMiniExpansionPack\",\"UnderworldExpansion\",\"MaraudersExpansion\",\"HirelingsAndLandmarksPack\"],\"DoNotShufflePlayers\":false,\"NumLandmarks\":0,\"LandmarksList\":[],\"BannedLandmarksList\":[],\"NumRandomClockworks\":0,\"DisableHirelingControlLoss\":false,\"DisableRandomHirelings\":false,\"options\":{},\"players\":[],\"createdAt\":0}"
+  }
+}

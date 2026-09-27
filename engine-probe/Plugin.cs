@@ -5,11 +5,45 @@ using BepInEx.Unity.IL2CPP;
 
 namespace RootEngineProbe;
 
-[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.3.0")]
+[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.7.0")]
 public sealed class Plugin : BasePlugin
 {
     public override void Load()
     {
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "chat-probe")
+        {
+            AuthorityBehaviour.Install();
+            AddComponent<NativeChatProbe>();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "timer-probe")
+        {
+            AuthorityBehaviour.Install();
+            AddComponent<NativeTurnTimerProbe>();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "online-setup-probe")
+        {
+            AddComponent<NativeOnlineSetupProbe>();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "steam-menu-test")
+        {
+            AddComponent<SteamSessionBehaviour>();
+            AddComponent<NativeOnlineSetupProbe>();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "steam-online-test")
+        {
+            AddComponent<SteamSessionBehaviour>();
+            AddComponent<NativeOnlineSetupProbe>();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "native-setup-probe")
+        {
+            AddComponent<NativeSetupProbe>();
+            return;
+        }
         if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "dlc-probe")
         {
             DlcProbe.Run(Log);
@@ -59,7 +93,7 @@ public sealed class Plugin : BasePlugin
                 AddComponent<ClientProbe>();
             return;
         }
-        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "server")
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") is "server" or "lobby-data-tests")
         {
             AuthorityBehaviour.Install();
             AddComponent<AuthorityBehaviour>();

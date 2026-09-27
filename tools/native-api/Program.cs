@@ -1,6 +1,8 @@
 using Mono.Cecil;
 
 // Read generated bindings without executing Windows or IL2CPP code.
+if (args.Length == 2 && args[1] == "--addresses")
+    return NativeAddressMap.Write(args[0]);
 if (args.Length < 2)
 {
     Console.Error.WriteLine("Usage: NativeApi <interop-directory> <type-name-substring> [more filters]");
@@ -19,7 +21,7 @@ foreach (var file in File.Exists(args[0]) ? new[] { args[0] } : Directory.Enumer
         foreach (var property in type.Properties)
             Console.WriteLine($"  PROPERTY {property.PropertyType} {property.Name}");
         foreach (var method in type.Methods.Where(method => !method.IsGetter && !method.IsSetter && method.Name != ".cctor"))
-            Console.WriteLine($"  METHOD {method}");
+            Console.WriteLine($"  METHOD {method} ({string.Join(", ", method.Parameters.Select(parameter => parameter.Name))})");
     }
 }
 return 0;

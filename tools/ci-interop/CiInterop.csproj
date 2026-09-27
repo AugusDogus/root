@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LoaderDir Condition="'$(LoaderDir)' == ''">$(MSBuildThisFileDirectory)../../.lab/ci-references/BepInEx/core</LoaderDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(LoaderDir)/*.dll" Exclude="$(LoaderDir)/dobby.dll" />
+  </ItemGroup>
+</Project>

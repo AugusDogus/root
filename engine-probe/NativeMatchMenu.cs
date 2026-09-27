@@ -46,8 +46,9 @@ internal sealed class NativeMatchMenu
     public void Show()
     {
         view.Begin(true, "match");
-        view.Text("Your table", 250, 40, 780, 65, 38);
-        view.Text("Mark ready when you are ready to play. Readiness does not pause the match.", 100, 110, 1080, 45, 20);
+        view.Text("Your table", 80, 40, 650, 65, 38);
+        view.DiagnosticsButton(840, 30);
+        view.Text("Mark ready when you are ready to play. Readiness does not pause the match.", 100, 125, 1080, 35, 20);
         displayedSeats = roster();
         foreach (var seat in displayedSeats)
         {
@@ -67,7 +68,7 @@ internal sealed class NativeMatchMenu
         if (client.GameOver) view.Button("Results", 460, 600, 320, 55, Results);
         view.Button("Return to menu", 840, 600, 350, 55, () => Confirm("Return to the menu?",
             release is null ? "You will leave this table. The host can invite you again."
-                : "This stops the match for everyone. Your latest saved moves are kept. Resume later and send new invitations.", returnHome));
+                : "This stops the match for everyone. Saved moves are kept, but any active turn timer keeps running. Resume later and send new invitations.", returnHome));
         view.Button("Back to game", 450, 700, 380, 55, view.ReturnToBoard);
     }
 
@@ -91,7 +92,9 @@ internal sealed class NativeMatchMenu
     {
         view.Begin(true, "results");
         view.Text("Match complete", 250, 60, 780, 70, 40);
-        view.Text(client.Winner is { } winner ? $"Winner: {winner}" : "The match has ended.", 230, 140, 820, 60, 30);
+        var winners = client.Standings.Where(standing => standing.Won).ToArray();
+        view.Text(winners.Length > 1 ? $"{winners.Length} factions won together."
+            : winners.Length == 1 ? $"Winner: {winners[0].Faction}" : "The match has ended.", 230, 140, 820, 60, 30);
         for (var index = 0; index < client.Standings.Length; index++)
         {
             var standing = client.Standings[index];

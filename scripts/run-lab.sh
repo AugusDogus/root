@@ -6,6 +6,12 @@ set -euo pipefail
 umask 077
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 - "$project_dir/launcher" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from test_budget import require_test_budget
+require_test_budget()
+PY
 lab_dir="${ROOT_LAB_DIR:-$project_dir/.lab}"
 if [[ ! -f "$lab_dir/game/Root.exe" || ! -d "$lab_dir/compatdata/pfx" ]]; then
   echo 'Root lab files are missing. Run python3 scripts/setup-lab.py first.' >&2

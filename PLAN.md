@@ -1,6 +1,6 @@
 # Make private six-player Root easy to play
 
-Historical delivery plan, retained for context. Some milestones below are superseded by the native menu, Steam networking, and DLC setup. See [README.md](README.md) for current behavior and validation limits.
+Historical delivery plan, retained for context. Some milestones below are superseded by the native menu, Steam networking, and DLC setup. The Cloudflare prototype has been removed; Steam is now the only supported multiplayer transport. The current private demo exposes installed gameplay expansions locally, superseding the earlier entitlement scope below. See [README.md](README.md) for current behavior and validation limits.
 
 ## Target experience
 
@@ -10,9 +10,9 @@ The first release uses the tested base-game plus Riverfolk roster: Marquise, Eyr
 
 ## MVP implementation
 
-The browser launcher, Windows/Linux ZIP packager, Steam discovery, separate game copies, sequential binding preparation, and Host/Join/Resume controls are implemented. Cloudflare Durable Objects relay traffic between friends and the native host, with Alchemy deployment configuration. Tailscale and router port forwarding are not required. Native Steam invites remain a later integration; invitations can be sent as Steam chat text.
+The browser launcher, Windows/Linux ZIP packager, Steam discovery, separate game copies, sequential binding preparation, and Host/Join/Resume controls are implemented. The initial Cloudflare relay and its Alchemy deployment configuration were replaced by Steam networking and invitations.
 
-Local validation is recorded in `results/relay-test.json` and, when successful, `results/native-relay-test.json`. Cloudflare deployment and real Windows/multi-machine play remain separate validation steps. The sections below describe the broader delivery goals, including work beyond this MVP.
+Current local validation is listed in README.md. Native Windows and real multi-machine play remain separate validation steps. The sections below describe the broader delivery goals, including work beyond this MVP.
 
 ## Existing foundation
 
@@ -56,7 +56,7 @@ Acceptance: host plus client completes a native move using only launcher control
 ### 4. Make connecting friends practical
 
 - Keep the current game protocol bound to loopback. It has no TLS and must not be exposed directly to the Internet.
-- Use the implemented Cloudflare HTTPS/WSS relay managed by the launcher. The host computer still runs Root's native rules authority. Validate the deployed path before promising Internet play.
+- Use SteamNetworkingSockets in the game mod. The host computer runs Root's native rules authority. Validate cross-account routing before promising Internet play.
 - Players should not edit invitation JSON, type SSH commands, configure router port forwarding, or share account passwords. Protect invitation secrets and verify the remote host.
 - Handle disconnects and rejoining with current private state; never automatically replay a move whose acknowledgment was lost without checking whether it was accepted.
 - Retain local multi-process tunnel tests for development. Real separate-machine testing is a release requirement for Internet-play claims. Any hosted relay, deployment, or ongoing cost requires a separate decision.
@@ -73,6 +73,6 @@ Acceptance: Windows and Linux players join the same host across separate network
 
 ## Next implementation increment
 
-Complete the native relay smoke test, deploy the reviewed relay after operator authorization, then have a Windows friend test installation and a two-machine game. Prioritize blockers found during that walkthrough over additional launcher features.
+Have a Windows friend test installation, real Steam invitation delivery, and a two-machine game. Prioritize blockers found during that walkthrough over additional launcher features.
 
 The launcher is now the main player-facing deliverable. It wraps the existing private host and native client; the remaining gameplay and network verification above still determines when it is ready for friends.

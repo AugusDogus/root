@@ -30,3 +30,7 @@ results/
 *.dll
 *.exe
 *.zip
+
+# Embedded native-launcher payload is assembled from pinned dependencies.
+launcher-native/payload/*
+!launcher-native/payload/.gitkeep

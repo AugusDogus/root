@@ -1,0 +1,169 @@
+name: Launcher
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOMAXPROCS: '2'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  checks:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Validate release metadata and packaging helpers
+        shell: bash
+        run: |
+          python scripts/launcher_release.py
+          python scripts/test-ci-packaging.py
+      - name: Test launcher with fixture payload
+        shell: bash
+        run: |
+          # Unit tests provide their own payloads. No private build inputs on PRs.
+          echo 'Unit tests only, never package this file.' > launcher-native/payload/ci-test.txt
+          go -C launcher-native test -p 1 ./...
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        if: runner.os == 'Linux'
+        with:
+          dotnet-version: '6.0.x'
+      - name: Test multiplayer protocol
+        if: runner.os == 'Linux'
+        run: dotnet run --project tools/steam-protocol-tests -p:UseSharedCompilation=false
+
+  build:
+    name: Build player packages
+    needs: checks
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '6.0.x'
+      - name: Validate version tag
+        if: github.ref_type == 'tag'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/launcher_release.py --tag "$RELEASE_TAG"
+      - name: Install SteamCMD dependencies and Windows icon compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lib32gcc-s1 bubblewrap binutils-mingw-w64-x86-64
+      - name: Download supported Root build
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: python scripts/ci_download_game.py --github-hosted
+      - name: Generate bindings without launching Root
+        run: >-
+          python scripts/ci_generate_references.py --github-hosted
+          --game .lab/steam-game --manifest .lab/steam-game/steamapps/appmanifest_965580.acf
+      - name: Build mod from this commit
+        run: dotnet build engine-probe -p:GameDir="$GITHUB_WORKSPACE/.lab/ci-references" -p:UseSharedCompilation=false -m:1
+      - name: Package and verify launchers
+        run: |
+          python scripts/package-native-launcher.py --github-hosted
+          python scripts/launcher_release.py --output dist/release-assets
+          expected=$(python scripts/launcher_release.py)
+          test "$(dist/'Root Six Player' --headless --version)" = "$expected"
+          dist/'Root Six Player' --headless --licenses .lab/ci-notices
+          test -s .lab/ci-notices/THIRD-PARTY-NOTICES.txt
+          test -s .lab/ci-notices/dependency-sources.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: dist/release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  windows-package:
+    name: Windows executable smoke test
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: packages
+      - name: Verify checksums and extract notices without Steam
+        shell: pwsh
+        run: |
+          foreach ($line in Get-Content packages/SHA256SUMS) {
+            $digest, $name = $line -split '  ', 2
+            if ((Get-FileHash -Algorithm SHA256 "packages/$name").Hash.ToLowerInvariant() -ne $digest) {
+              throw "Package checksum mismatch: $name"
+            }
+          }
+          $process = Start-Process -FilePath ./packages/RootSixPlayer.exe -ArgumentList '--headless', '--licenses', 'notices' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Launcher exited with $($process.ExitCode)" }
+          foreach ($name in @('THIRD-PARTY-NOTICES.txt', 'dependency-sources.zip')) {
+            if (!(Test-Path "notices/$name") -or (Get-Item "notices/$name").Length -eq 0) {
+              throw "Missing bundled notices: $name"
+            }
+          }
+
+  release:
+    name: Publish playtest release
+    needs: [build, windows-package]
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: packages
+      - name: Publish without replacing existing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          (cd packages && sha256sum --check SHA256SUMS)
+          gh release create "$RELEASE_TAG" --verify-tag --prerelease \
+            --title "Root Six Player ${RELEASE_TAG#v}" --notes-file RELEASE.md packages/*

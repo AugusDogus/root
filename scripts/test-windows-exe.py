@@ -1,23 +1,36 @@
 #!/usr/bin/env python3
-"""Test the standalone EXE on an isolated display without opening a browser or game."""
+"""Smoke-test the native Windows EXE under isolated Proton, without a game/browser."""
+import argparse
 import json
 import os
 from pathlib import Path
 import shutil
 import struct
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 import zipfile
 
 from windows_launcher import PROJECT, windows_path, windows_process
 from steam import VERSION
+from test_diagnostics import Diagnostics
 
 
 def main():
     os.umask(0o077)
-    lab = PROJECT / '.lab/windows-exe-test'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--unit-tests', type=Path, help='Also run a compiled Windows Go test executable')
+    args = parser.parse_args()
+    lab = PROJECT / '.lab/windows-native-exe-test'
+    if args.unit_tests:
+        test_lab = lab / 'unit-tests'
+        test_lab.mkdir(parents=True, exist_ok=True)
+        transcript = test_lab / 'test-output.txt'
+        transcript.unlink(missing_ok=True)
+        job = test_lab / 'run-tests.cmd'
+        job.write_text('@echo off\n"' + windows_path(args.unit_tests) + '" -test.v -test.timeout=120s > "' + windows_path(transcript) + '" 2>&1\nexit /b %errorlevel%\n')
+        with windows_process(test_lab, ['cmd.exe', '/d', '/c', windows_path(job)]) as process:
+            code = process.wait(timeout=180)
+        if code != 0 or not transcript.exists() or not transcript.read_text().rstrip().endswith('PASS'):
+            raise RuntimeError(f'Windows unit tests failed ({code}). Inspect {test_lab / "process.log"}.')
+        print('Windows Go tests and native progress lifecycle passed.', flush=True)
     isolated = lab / 'standalone'
     isolated.mkdir(parents=True, exist_ok=True)
     executable = isolated / 'Root Six Player.exe'
@@ -30,59 +43,16 @@ def main():
     with zipfile.ZipFile(PROJECT / f'dist/root-six-player-{VERSION}-windows.zip') as archive:
         assert archive.namelist() == ['Root Six Player.exe']
         assert archive.read('Root Six Player.exe') == content
-    data = lab / 'data'
-    data.mkdir(exist_ok=True)
-    ready = data / 'launcher-url.txt'
-    ready.unlink(missing_ok=True)
-    with windows_process(lab, [str(executable), '--no-browser', '--data', windows_path(data)]) as process:
-        deadline = time.monotonic() + 120
-        while not ready.exists():
-            if process.poll() is not None or time.monotonic() >= deadline:
-                raise RuntimeError('Packaged launcher did not open. Inspect the isolated prefix’s AppData/Local/RootSixPlayer/launcher.log.')
-            time.sleep(0.25)
-        url = urllib.parse.urlsplit(ready.read_text())
-        origin = f'http://127.0.0.1:{url.port}'
-        headers = {'Authorization': 'Bearer ' + url.fragment, 'Origin': origin}
-
-        def status():
-            with urllib.request.urlopen(urllib.request.Request(origin + '/api/status', headers=headers), timeout=5) as response:
-                return json.load(response)
-
-        def action(name, values):
-            request = urllib.request.Request(origin + '/api/' + name, data=json.dumps(values).encode(),
-                                             headers={**headers, 'Content-Type': 'application/json'})
-            with urllib.request.urlopen(request, timeout=5) as response:
-                assert response.status == 202
-
-        state = status()
-        assert not state['active'] and not state['prepared']
-        for route, filename in (('/', 'index.html'), ('/app.js', 'app.js'), ('/style.css', 'style.css')):
-            with urllib.request.urlopen(origin + route, timeout=5) as response:
-                assert response.read() == (PROJECT / 'launcher/web' / filename).read_bytes()
-        html = (PROJECT / 'launcher/web/index.html').read_text()
-        assert 'Cloudflare' not in html and 'runtime testing' not in html and 'bindings' not in html
-        try:
-            urllib.request.urlopen(origin + '/api/status', timeout=5)
-            raise AssertionError('Unauthenticated launcher access was accepted')
-        except urllib.error.HTTPError as error:
-            assert error.code == 403
-            error.close()
-        # No Root process is started: this deliberately selects a nonexistent folder.
-        action('prepare', {'game': windows_path(lab / 'missing-game')})
-        deadline = time.monotonic() + 10
-        while (state := status())['busy'] and time.monotonic() < deadline:
-            time.sleep(0.1)
-        assert not state['busy'] and state['error'] and not state['active']
-        assert not (data / 'host/game').exists()
-        action('quit', {})
-        code = process.wait(timeout=30)
-        assert code == 0, f'Packaged launcher exited with {code}'
-    assert not ready.exists()
+    licenses = Diagnostics.from_environment().directory / 'windows-dependency-notices'
+    with windows_process(lab, [str(executable), '--headless', '--licenses', windows_path(licenses)]) as process:
+        assert process.wait(timeout=120) == 0
+    assert (licenses / 'THIRD-PARTY-NOTICES.txt').stat().st_size > 1000
+    assert (licenses / 'dependency-sources.zip').is_file()
     result = {'status': 'passed', 'standaloneWindowsExe': True, 'windowed': True,
-              'adjacentFilesRequired': False, 'uiAssets': True, 'apiAuthentication': True,
-              'setupErrorDisplayed': True, 'cleanExit': True, 'markdownInWindowsPackage': False,
+              'adjacentFilesRequired': False, 'bundledDependencies': True,
+              'cleanExit': True, 'browserInterfaceRemoved': True,
               'browserOpened': False, 'gameStarted': False, 'nativeWindowsTested': False,
-              'scope': 'Actual Windows executable under isolated Proton and Xvfb'}
+              'scope': 'Native Go Windows executable under isolated Proton and Xvfb'}
     (PROJECT / 'results/windows-exe-test.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))
 

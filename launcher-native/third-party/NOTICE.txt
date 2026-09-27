@@ -1,0 +1,80 @@
+Root Six Player: bundled dependency notices
+
+This launcher includes the unmodified BepInEx Unity IL2CPP Windows x64 loader
+distribution 6.0.0-be.788, commit 5b766a3b7f6c164d4798924a93f3acf4db769d06.
+The same Windows loader is used with Steam Proton on Linux. Root game files,
+Steam, Proton, and generated game bindings are not distributed in the launcher.
+
+Loader artifact:
+https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788%2B5b766a3.zip
+SHA-256: f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a
+
+Components and upstream source versions
+
+BepInEx 6.0.0-be.788: LGPL-2.1-only.
+https://github.com/BepInEx/BepInEx/tree/5b766a3b7f6c164d4798924a93f3acf4db769d06
+Il2CppInterop 1.5.3 (Common, Generator, Runtime, HarmonySupport): LGPL-3.0-only.
+https://github.com/BepInEx/Il2CppInterop/tree/dbda1cb353b0f4253345dc45136d170b9e50a5a0
+UnityDoorstop 4.5.0: LGPL-2.1.
+https://github.com/NeighTools/UnityDoorstop/tree/33dab9a6733862eb81869ff08431d9478b28784b
+
+Complete upstream source archives for these three libraries accompany this
+launcher in dependency-sources.zip, available through --licenses extraction.
+The archive includes an index of immutable source URLs and SHA-256 checksums.
+Their upstream build scripts and instructions are included in those archives.
+No changes have been made to these libraries. Their license rights, including
+modification and reverse engineering for debugging such modifications, remain
+in effect. These licenses apply to the respective components, not to Root.
+
+Additional loader dependencies:
+  HarmonyX 2.10.2, MIT, https://github.com/BepInEx/HarmonyX/tree/v2.10.2
+  MonoMod.RuntimeDetour and MonoMod.Utils 22.7.31.1, MIT,
+    https://github.com/MonoMod/MonoMod/tree/v22.07.31.01
+  MonoMod.Backports 1.1.2 and MonoMod.ILHelpers 1.1.0, MIT,
+    Copyright 2024 0x0ade, DaNike,
+    https://github.com/MonoMod/MonoMod/tree/a1b82852b2574742776af08818487b90b0bfab93
+  Mono.Cecil 0.11.4, MIT, https://github.com/jbevain/cecil/tree/0.11.4
+  SemanticVersioning 2.0.2, MIT, Copyright 2016 Adam Reeve,
+    https://github.com/adamreeve/semver.net/tree/c52c9d4c5d34a6a3bb6ff45f7276d8b6e951a42d
+  AsmResolver 6.0.0-beta.5, MIT,
+    https://github.com/Washi1337/AsmResolver/tree/124e161a9bc0ebb83b4d97276ae3da3c9cfe2fc5
+  AssetRipper.Primitives 3.2.0, MIT, with included uTinyRipper notices,
+    https://github.com/AssetRipper/AssetRipper.Primitives/tree/d759b3db98bf2a1cb8c2181faf5d405610aac585
+  AssetRipper.CIL 1.2.2, MIT,
+    https://github.com/AssetRipper/AssetRipper.CIL/tree/06216e69825ccd6536dc17e9ca81c4d539ce9321
+  AssetRipper.Gee.External.Capstone 2.3.2, MIT, with Capstone notices,
+    https://github.com/ds5678/Capstone.NET/tree/b90e380c14e857865c94a355954236e678bd557c
+  Disarm 2022.1.0-master.99, MIT,
+    https://github.com/SamboyCoding/Disarm/tree/8574010015c8c56bb7faad7e407c50b0abe9cc72
+  Iced 1.21.0, MIT, https://github.com/icedland/iced/tree/v1.21.0
+  Cpp2IL.Core, LibCpp2IL, StableNameDotNet, WasmDisassembler,
+    2022.1.0-development.1452, MIT,
+    https://github.com/SamboyCoding/Cpp2IL/tree/558ddd98642010897d54316b51fbaa7889fda093
+  Dobby 1.0.5, Apache-2.0, https://github.com/BepInEx/Dobby/tree/v1.0.5
+  Microsoft .NET runtime 6.0.7, MIT and included third-party notices,
+    https://github.com/BepInEx/dotnet-runtime/tree/0ec02c8c96e2eda06dc5b5edfdbdba0f36415082
+  Go standard library and runtime, BSD-style license included from the build
+    toolchain. Go toolchain version is recorded in the built binary.
+
+Versions above are grounded in the loader's pinned source project references,
+its .doorstop_version and dotnet/.version files, NuGet package metadata, and
+the bundled Cpp2IL and Disarm assembly informational versions. The immutable
+license text origins and hashes are recorded in license-sources.json.
+
+Unity base assemblies
+
+UnityEngine base assemblies, version 2022.3.62, are bundled unchanged from the
+library archive used by BepInEx for interop generation:
+https://unity.bepinex.dev/libraries/2022.3.62.zip
+SHA-256: 575e7d600f69de8200ccf4db700b3ae6252366c22e8c3434c860e428974518d1
+Copyright Unity Technologies and respective contributors.
+
+This archive has no accompanying license file. Its contents are not covered
+by Root Six Player's license or by BepInEx's LGPL license. This notice does
+not assert a separate redistribution grant for Unity's assemblies. Applicable
+Unity terms remain applicable: https://unity.com/legal/terms-of-service/software
+These are base engine assemblies, not copied Root assemblies or generated
+game bindings. Root itself must be installed separately through Steam.
+
+Full component license texts follow in this file. The individual source URLs
+are included next to each text. Upstream license texts are preserved verbatim.

@@ -24,8 +24,10 @@ internal sealed class PrivateClient
     private readonly string token;
     private Func<object, Task<JsonElement>> exchange;
     private readonly Queue<object> outgoing = new();
+    private readonly Queue<string> outgoingChat = new();
     private readonly Queue<string> incoming = new();
-    private Task<JsonElement>? pending;
+    private sealed record ReceivedResponse(JsonElement Body, long SentAt, long ReceivedAt);
+    private Task<ReceivedResponse>? pending;
     private TuberCanisMatch? relay;
     private int cursor;
     private float nextPoll;
@@ -48,6 +50,17 @@ internal sealed class PrivateClient
     public SeatStatus[] Lobby { get; private set; } = Array.Empty<SeatStatus>();
     public int Seat { get; private set; }
     public string DisplayName { get; set; } = "";
+    public Dictionary<string, string>? JoinMetadata { get; set; }
+    public JsonElement? PendingLobby { get; private set; }
+    public Action<JsonElement>? LobbyChanged { get; set; }
+    public Action? LobbyStarted { get; set; }
+    public Action? LobbyRejected { get; set; }
+    public Action<ChatEntry[]>? ChatChanged { get; set; }
+    private long chatVersion = -1;
+    private readonly PrivateHostClock hostClock = new();
+    public long ServerTimeMilliseconds => hostClock.Estimate(Environment.TickCount64);
+    public void SendChat(string text) => outgoingChat.Enqueue(text);
+    public void LobbyCommand(string op, Dictionary<string, string>? metadata) => outgoing.Enqueue(new { op, token, metadata });
     public void Ready(bool ready) => outgoing.Enqueue(new { op = "ready", token, ready });
     public void Resign()
     {
@@ -61,6 +74,7 @@ internal sealed class PrivateClient
         if (pending is { } abandoned) _ = abandoned.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
         pending = null;
         outgoing.Clear(); incoming.Clear();
+        chatVersion = -1;
         exchange = transport;
         outgoing.Enqueue(new { op = "join", token });
     }
@@ -71,6 +85,7 @@ internal sealed class PrivateClient
     }
 
     public PrivateClient(string file) : this(ReadConnection(file)) { }
+    public PrivateClient(int port, string token) : this((port, token)) { }
 
     private static (int Port, string Token) ReadConnection(string file)
     {
@@ -108,12 +123,42 @@ internal sealed class PrivateClient
     {
         if (pending is { IsCompleted: true })
         {
-            var response = pending.GetAwaiter().GetResult();
+            var received = pending.GetAwaiter().GetResult();
+            var response = received.Body;
             pending = null;
+            if (response.TryGetProperty("serverTime", out var clock) && clock.TryGetInt64(out var milliseconds))
+                hostClock.Observe(milliseconds, received.SentAt, received.ReceivedAt);
             if (response.GetProperty("ok").GetBoolean() == false)
             {
                 var code = response.GetProperty("error").GetString();
                 Log.LogWarning($"Private host rejected a request: {code}");
+                if (code is "InvalidChat" or "ChatRateLimited")
+                {
+                    Notice = code == "ChatRateLimited" ? "Wait a second before sending another message. Your last message was not sent."
+                        : "Your message was not sent. Use 1 to 500 characters on one line.";
+                    return;
+                }
+                if (code == "LobbyAlreadyStarted")
+                {
+                    LobbyRejected?.Invoke();
+                    outgoing.Clear();
+                    outgoing.Enqueue(new { op = "join", token });
+                    return;
+                }
+                if (PendingLobby is not null && code is "FactionUnavailable" or "PlayersMissing" or "HostOnly" or "LobbyNotStarted")
+                {
+                    LobbyRejected?.Invoke();
+                    Notice = code switch
+                    {
+                        "FactionUnavailable" => "That faction is already taken or conflicts with the table. Choose another faction.",
+                        "PlayersMissing" => "A human seat is still waiting or disconnected. Invite your friends and wait for them to join before starting.",
+                        "HostOnly" => "Only the host can start this match.",
+                        _ => "The game is still in the lobby. Wait for the host to start."
+                    };
+                    outgoing.Clear();
+                    outgoing.Enqueue(new { op = "join", token });
+                    return;
+                }
                 if (code is "Unauthorized" or "BotSeat") throw new InvalidDataException("This seat invitation is no longer valid. Ask the host for a new invitation.");
                 if (code == "SnapshotTooLarge") throw new InvalidDataException("This board is too large to synchronize with this mod version. The host's save is preserved. Keep it for a newer release.");
                 if (code is not ("NoSuchSelection" or "WrongPlayer" or "UnsupportedSelection" or "InvalidSource" or "InvalidTarget" or "EngineDidNotAdvance" or "InvalidSelection" or "InvalidCursor" or "MatchFinished" or "SeatResigned" or "ResignationFailed" or "MatchBusy"))
@@ -133,14 +178,29 @@ internal sealed class PrivateClient
                 outgoing.Enqueue(new { op = "join", token });
                 return;
             }
-            if (response.TryGetProperty("messages", out var messages))
+            if (response.TryGetProperty("chat", out var chat) && chat.ValueKind != JsonValueKind.Null)
             {
+                var update = MatchChat.Parse(chat);
+                chatVersion = update.Version;
+                ChatChanged?.Invoke(update.Messages);
+            }
+            if (response.TryGetProperty("phase", out var phase) && phase.GetString() == "lobby")
+            {
+                PendingLobby = response;
+                Seat = response.GetProperty("seat").GetInt32() + 1;
+                Setup = MatchSetup.Parse(response.GetProperty("setup").GetRawText(), pendingLobby: true);
+                LobbyChanged?.Invoke(response);
+            }
+            else if (response.TryGetProperty("messages", out var messages))
+            {
+                if (PendingLobby is not null) { PendingLobby = null; LobbyStarted?.Invoke(); }
                 if (response.TryGetProperty("reset", out var reset) && reset.GetBoolean())
                 { outgoing.Clear(); incoming.Clear(); }
                 GameOver = response.GetProperty("gameOver").GetBoolean();
                 Transitioning = response.TryGetProperty("transitioning", out var transition) && transition.GetBoolean();
                 Winner = response.GetProperty("winner").GetString();
                 Lobby = response.TryGetProperty("lobby", out var lobby) ? MatchLobby.Parse(lobby) : Array.Empty<SeatStatus>();
+                if (response.TryGetProperty("setup", out var settings)) Setup = MatchSetup.Parse(settings.GetRawText());
                 if (Winner is { } winner)
                     foreach (var player in response.GetProperty("roster").EnumerateArray())
                         if (player.GetProperty("account").GetString() == winner) Winner = MatchSetup.FactionName(player.GetProperty("faction").GetInt32());
@@ -151,13 +211,15 @@ internal sealed class PrivateClient
                 cursor = response.GetProperty("next").GetInt32();
                 Offer = response.GetProperty("offer").Deserialize<SelectionOffer>();
             }
-            else
+            else if (!response.TryGetProperty("chatAccepted", out _))
                 AcceptedChoices++;
         }
         if (relay is not null && account is not null)
             while (incoming.TryDequeue(out var json))
             {
                 var message = JSON.Deserialize<DWDEvent>(json);
+                if (message.TryCast<Canis.messages.timer.DisplayTimer>() is { } timer)
+                    message = NativeTimerUI.ForClient(timer, ServerTimeMilliseconds);
                 if (message.TryCast<Canis.messages.sequence.SequenceMessage>()?.Msg.TryCast<tuber.canis.messages.GameResults>() is { } results)
                 {
                     // Root's victory scene has only four player slots and leaves
@@ -182,10 +244,19 @@ internal sealed class PrivateClient
             }
         if (pending is null && now >= nextPoll)
         {
-            var request = outgoing.TryDequeue(out var choice) ? choice : new { op = launched ? "poll" : "join", token, after = cursor, name = DisplayName };
-            pending = exchange(request);
+            var request = outgoing.TryDequeue(out var choice) ? choice
+                : outgoingChat.TryDequeue(out var text) ? new { op = "chat", token, text }
+                : (object)new { op = launched || PendingLobby is not null ? "poll" : "join", token, after = cursor, chatVersion, name = DisplayName, metadata = JoinMetadata };
+            pending = ExchangeWithReceipt(request);
             nextPoll = now + 0.25f;
         }
+    }
+
+    private async Task<ReceivedResponse> ExchangeWithReceipt(object request)
+    {
+        var sentAt = Environment.TickCount64;
+        var response = await exchange(request).ConfigureAwait(false);
+        return new(response, sentAt, Environment.TickCount64);
     }
 
     private JsonElement Exchange(object request)
@@ -219,7 +290,9 @@ internal sealed class PrivateClient
         // Forward only public settings, never the host's initialization/checkpoint.
         var setup = response.TryGetProperty("setup", out var settings) ? MatchSetup.Parse(settings.GetRawText()) : null;
         Setup = setup ?? new();
-        if (setup is not null) NativeMatchSetup.Apply(init, setup);
+        var nativeConfiguration = response.TryGetProperty("initialization", out var native) && native.ValueKind == JsonValueKind.Object;
+        if (nativeConfiguration) init = NativeClientConfiguration.Parse(native, response.GetProperty("roster"));
+        else if (setup is not null) NativeMatchSetup.Apply(init, setup);
         var seat = response.GetProperty("seat").GetInt32();
         Seat = seat + 1;
         var index = 0;
@@ -238,12 +311,14 @@ internal sealed class PrivateClient
             var factionValue = player.GetProperty("faction").GetInt32();
             if (Enum.IsDefined(typeof(Factions), factionValue) == false)
                 throw new InvalidDataException("Host roster contains an unknown faction.");
-            init.AddTuberPlayer(setup is not null ? NativeMatchSetup.Player(player.GetProperty("name").GetString() ?? "Player", id, index++, setup) : new TuberPlayerMatchInitData(player.GetProperty("name").GetString(), id)
-            {
-                Faction = (Factions)factionValue,
-                StartingCharacter = setup is null ? VagabondCharacters.Unknown : (VagabondCharacters)setup.Characters[index],
-                PlayerStartingOrder = index++
-            });
+            if (!nativeConfiguration)
+                init.AddTuberPlayer(setup is not null ? NativeMatchSetup.Player(player.GetProperty("name").GetString() ?? "Player", id, index, setup) : new TuberPlayerMatchInitData(player.GetProperty("name").GetString(), id)
+                {
+                    Faction = (Factions)factionValue,
+                    StartingCharacter = VagabondCharacters.Unknown,
+                    PlayerStartingOrder = index
+                });
+            index++;
         }
         if (index != 6 || account is null) throw new InvalidDataException("Host did not return a six-seat roster with our seat.");
         dwd.core.account.AccountProvider.Find().InitializeWithOfflineID(account);

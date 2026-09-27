@@ -7,6 +7,11 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../engine-probe/SupportDiagnostics.cs" Link="SupportDiagnostics.cs" />
+    <Compile Include="../../engine-probe/PrivateSession.cs" Link="PrivateSession.cs" />
+    <Compile Include="../../engine-probe/AuthorityOwner.cs" Link="AuthorityOwner.cs" />
+    <Compile Include="../../engine-probe/MatchChat.cs" Link="MatchChat.cs" />
+    <Compile Include="../../engine-probe/PrivateHostClock.cs" Link="PrivateHostClock.cs" />
     <Compile Include="../../engine-probe/SeatHistory.cs" Link="SeatHistory.cs" />
     <Compile Include="../../engine-probe/MatchConnection.cs" Link="MatchConnection.cs" />
     <Compile Include="../../engine-probe/MatchLobby.cs" Link="MatchLobby.cs" />

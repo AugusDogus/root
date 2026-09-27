@@ -1,1 +1,0 @@
-{"name":"root-private-relay","private":true,"type":"module","scripts":{"dev":"wrangler dev --ip 127.0.0.1 --port 8787","test":"python3 ../scripts/test-relay.py","check":"tsc --noEmit","deploy":"alchemy deploy"},"dependencies":{"alchemy":"^0.93.0"},"devDependencies":{"@cloudflare/workers-types":"latest","@types/bun":"latest","typescript":"^5.9.3","wrangler":"^4.0.0"}}

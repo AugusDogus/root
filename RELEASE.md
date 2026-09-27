@@ -1,22 +1,27 @@
-# Root Six Player 0.3.0
+# Root Six Player 0.7.0
 
-Private six-player games with Steam friends, using Root's own board and controls.
+Open one launcher to play private six-player Root with Steam friends.
 
-- Choose Human or Easy, Medium, or Hard AI for each friend seat.
-- Use ordinary AI with base and expansion factions. Clockwork remains a separate choice.
-- Keep AI settings when resuming a saved match.
-- Invite friends only to human seats, with clear AI labels at the table.
-- Keep table buttons responsive while readiness updates arrive.
+- Native Windows and Linux executables, with no Python installation required.
+- Automatic Steam discovery and isolated mod setup.
+- Bundled BepInEx and Unity setup libraries, with no first-run dependency download.
+- Root's native setup, waiting room, board, chat, and turn timers.
+- Human seats, ordinary AI, and Clockwork options supplied by the game.
+- All installed gameplay expansions available in the private playtest.
+- Copy diagnostics from Match or an error screen when reporting a problem.
 
-On Windows, download **RootSixPlayer.exe** and open it. On Linux, extract the
-Linux ZIP and run **Play.sh**. Keep Steam open and install Root first. Older saves
-can be resumed; new saves require this release or newer. All players need the same
-mod release. Open the mod before accepting a Steam invitation.
+On Windows, open **Root Six Player.exe**. On Linux, extract the ZIP and open
+**Root Six Player**. Install Root and keep Steam open. Linux also needs Proton
+Experimental and Steam Linux Runtime 4 installed through Steam. First-time setup
+can take several minutes while bindings are generated locally. The launcher closes
+after opening Root. Hosting, saves, and returning to the menu are handled by the mod.
 
-To update, close the game and open the new launcher. It updates its own mod files
-and preserves your saved matches and normal Steam installation. The supported game
-is Root 2.1.5, Steam build 22238765. DLC entitlement checks are unchanged.
+To update, close Root and open the new launcher. It preserves compatible saves
+and the normal Steam installation. All players should use the same release.
+Open the mod before accepting a Steam invitation. Active timers continue while
+the host is closed.
 
-This is a playtest release. Native Windows gameplay and Steam invitations between
-different accounts still need real-player testing. The private GitHub repository
-requires access to download its releases.
+Supported game: Root 2.1.5, Steam build 22238765. Private playtest expansion choices
+do not require account unlocks. This does not change purchases or ordinary Steam Root.
+This remains a playtest build. Native Windows gameplay and Steam invitations
+between different accounts still need real-player testing.

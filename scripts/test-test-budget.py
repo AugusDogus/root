@@ -13,15 +13,15 @@ import test_budget
 
 
 class BudgetTests(unittest.TestCase):
-    def check_budget(self, group, limit='4294967296', swap='0', available=16 * test_budget.GIB):
+    def check_budget(self, group, limit='8589934592', swap='0', available=16 * test_budget.GIB):
         with patch.object(Path, 'read_text', side_effect=[group, limit, swap]), patch('test_budget.available_memory', return_value=available):
             test_budget.require_test_budget()
 
     def test_uncapped_launch_rejected(self):
         with self.assertRaisesRegex(RuntimeError, 'safe-test.py'):
             self.check_budget('0::/unbounded')
-        for limit, swap in [('max', '0'), ('8589934592', '0'), ('4294967296', 'max')]:
-            with self.subTest(limit=limit, swap=swap), self.assertRaisesRegex(RuntimeError, 'maximum 4 GiB'):
+        for limit, swap in [('max', '0'), ('8589934593', '0'), ('4294967296', 'max')]:
+            with self.subTest(limit=limit, swap=swap), self.assertRaisesRegex(RuntimeError, 'maximum 8 GiB'):
                 self.check_budget('0::/root-private-test.service', limit, swap)
 
     def test_desktop_reserve(self):

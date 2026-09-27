@@ -13,10 +13,13 @@ internal static class LoopbackProbe
 {
     public static IEnumerator<object?> Run(ManualLogSource log, Action<Il2CppSystem.Collections.IEnumerator> startAi)
     {
+        using var owner = new AuthorityOwner();
+        if (!owner.Alive) { UnityEngine.Application.Quit(); yield break; }
         var output = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, "..", "results", "server"));
         Directory.CreateDirectory(output);
         var endpointFile = Path.Combine(output, "endpoint.json");
         var listener = new TcpListener(IPAddress.Loopback, 0);
+        HostedMatch? activeHost = null;
         try
         {
             var checkpoint = Environment.GetEnvironmentVariable("ROOT_LAB_SAVE_FILE");
@@ -26,29 +29,37 @@ internal static class LoopbackProbe
             if (resume == false && checkpoint is not null && File.Exists(checkpoint))
                 throw new IOException("Checkpoint already exists. Resume it or choose a new save path; the existing file was not changed.");
             var settingsFile = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, "..", "match-setup.json"));
-            var host = resume && checkpoint is not null ? MatchCheckpoint.Load(checkpoint)
+            var nativeFile = Path.GetFullPath(Path.Combine(BepInEx.Paths.GameRootPath, "..", "native-setup.json"));
+            var nativeJson = File.Exists(nativeFile) ? File.ReadAllText(nativeFile) : null;
+            using var nativeDocument = nativeJson is null ? null : JsonDocument.Parse(nativeJson);
+            var lobby = !resume && nativeDocument?.RootElement.TryGetProperty("name", out var kind) == true && kind.GetString() == "CreateLobbyGame"
+                ? new PendingLobby(nativeJson ?? throw new InvalidDataException("Missing online configuration.")) : null;
+            var host = lobby is not null ? null : resume && checkpoint is not null ? MatchCheckpoint.Load(checkpoint)
+                : nativeJson is not null ? new HostedMatch(NativeHostConfiguration.Parse(nativeJson))
                 : File.Exists(settingsFile) ? new HostedMatch(MatchSetup.Parse(File.ReadAllText(settingsFile))) : new HostedMatch(sixPlayers: true);
-            if (checkpoint is not null && resume == false) MatchCheckpoint.Save(host, checkpoint);
-            var tokens = Enumerable.Range(0, host.PlayerCount).Select(_ => Guid.NewGuid().ToString("N")).ToArray();
+            activeHost = host;
+            if (checkpoint is not null && resume == false && host is not null) MatchCheckpoint.Save(host, checkpoint);
+            var tokens = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid().ToString("N")).ToArray();
             var controlToken = Guid.NewGuid().ToString("N");
             listener.Start();
             if (listener.LocalEndpoint is not IPEndPoint endpoint)
                 throw new InvalidOperationException("Loopback listener did not expose an IP endpoint.");
-            File.WriteAllText(endpointFile, JsonSerializer.Serialize(new { port = endpoint.Port, tokens, controlToken, setup = NativeMatchSetup.Read(host.Match.TuberMatchInitData, host.SeatInitialization) }));
+            File.WriteAllText(endpointFile, JsonSerializer.Serialize(new { port = endpoint.Port, tokens, controlToken, setup = host?.PublicSetup ?? lobby?.Setup, pending = lobby is not null }));
             log.LogInfo($"SERVER: six-player engine listening on 127.0.0.1:{endpoint.Port}");
             var elapsed = Stopwatch.StartNew();
             var lifetime = int.TryParse(Environment.GetEnvironmentVariable("ROOT_LAB_LIFETIME_SECONDS"), out var seconds)
                 && seconds >= 30 && seconds <= 43200 ? seconds : 300;
             var running = true;
-            var savedCursor = host.Messages.Sum(history => history.Count);
+            var savedCursor = host?.Messages.Sum(history => history.Count) ?? 0;
             var playerSession = Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1";
-            while (running && (playerSession || elapsed.Elapsed < TimeSpan.FromSeconds(lifetime)))
+            while (running && owner.Alive && (playerSession || elapsed.Elapsed < TimeSpan.FromSeconds(lifetime)))
             {
                 yield return null;
-                var resigned = host.CompleteResignation();
-                host.AdvanceAIPlayers(startAi);
-                var currentCursor = host.Messages.Sum(history => history.Count);
-                if (checkpoint is not null && !host.Resigning && (resigned || savedCursor != currentCursor))
+                host?.Timers.Tick();
+                var resigned = host?.CompleteResignation() ?? false;
+                host?.AdvanceAIPlayers(startAi);
+                var currentCursor = host?.Messages.Sum(history => history.Count) ?? 0;
+                if (host is not null && checkpoint is not null && !host.Resigning && (resigned || savedCursor != currentCursor))
                 {
                     MatchCheckpoint.Save(host, checkpoint);
                     savedCursor = currentCursor;
@@ -78,8 +89,11 @@ internal static class LoopbackProbe
                     else
                     {
                         var seat = Array.IndexOf(tokens, token);
-                        reply = seat < 0 ? Error("Unauthorized") : Handle(host, seat, op, root);
-                        if (checkpoint is not null && seat >= 0 && !host.Resigning && op is not ("poll" or "join" or "ready") &&
+                        reply = seat < 0 ? Error("Unauthorized") : host is not null ? Handle(host, seat, op, root)
+                            : lobby?.Handle(seat, op, root) ?? Error("HostUnavailable");
+                        host ??= lobby?.Started;
+                        activeHost = host;
+                        if (host is not null && checkpoint is not null && seat >= 0 && !host.Resigning && op is not ("poll" or "join" or "ready") &&
                             JsonSerializer.SerializeToElement(reply).GetProperty("ok").GetBoolean())
                         {
                             try { MatchCheckpoint.Save(host, checkpoint); savedCursor = host.Messages.Sum(history => history.Count); }
@@ -104,6 +118,7 @@ internal static class LoopbackProbe
         }
         finally
         {
+            activeHost?.Timers.Stop();
             listener.Stop();
             File.Delete(endpointFile);
         }
@@ -113,12 +128,23 @@ internal static class LoopbackProbe
     private static object Handle(HostedMatch host, int seat, string op, JsonElement request)
     {
         if (!host.IsHumanSeat(seat)) return Error("BotSeat");
+        if (op is "lobby-start" or "lobby-metadata" or "lobby-join" or "lobby-leave") return Error("LobbyAlreadyStarted");
         host.Lobby.Touch(seat);
+        if (op == "chat")
+        {
+            var player = host.SeatInitialization[seat];
+            var result = host.Chat.Add(seat, player.accountID.ToString(), player.name, request);
+            return result == ChatResult.Accepted ? new { ok = true, chatAccepted = true } : Error(result.ToString());
+        }
         if (op == "join" && request.TryGetProperty("name", out var name))
         {
             if (name.ValueKind != JsonValueKind.String || name.GetString() is not { } text || text.Length > 64 || text.Any(char.IsControl))
                 return Error("InvalidRequest");
-            if (text.Length != 0) host.Lobby.SetName(seat, text);
+            if (text.Length != 0)
+            {
+                host.Lobby.SetName(seat, text);
+                host.SeatInitialization[seat].name = text;
+            }
         }
         if (op is "poll" or "join")
         {
@@ -136,12 +162,13 @@ internal static class LoopbackProbe
                 reset = true;
                 batch = (host.Snapshot(seat), history.Count);
             }
-            var setup = NativeMatchSetup.Read(host.Match.TuberMatchInitData, host.SeatInitialization);
+            var setup = host.PublicSetup;
             return new
             {
                 ok = true,
                 seat,
                 players = host.PlayerCount,
+                serverTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 // The rules set this inherited flag at victory. The similarly
                 // named TuberMatch.GameOver remains false in completed matches.
                 gameOver = host.Match.GameOverD,
@@ -149,11 +176,13 @@ internal static class LoopbackProbe
                 winner = host.Match.WinnerExists ? host.Match.Winner.ToString() : null,
                 gameId = host.Match.TuberMatchInitData.gameID.ToString(),
                 setup,
+                chat = host.Chat.Read(request),
+                initialization = op == "join" || after == 0 ? (JsonElement?)NativeClientConfiguration.Create(host) : null,
                 roster = Enumerable.Range(0, host.PlayerCount).Select(i => new
                 {
                     account = host.SeatInitialization[i].accountID.ToString(),
-                    faction = (int)host.SeatInitialization[i].Faction,
-                    name = $"Private player {i + 1}"
+                    faction = (int)host.SeatPlayers[i].Faction,
+                    name = MatchLobby.CleanName(host.SeatInitialization[i].name)
                 }).ToArray(),
                 next = batch.Next,
                 reset,
@@ -176,7 +205,8 @@ internal static class LoopbackProbe
             host.Resign(seat);
             return new { ok = true, pending = host.Resigning };
         }
-        if (host.Resigning) return Error("MatchBusy");
+        if (host.Resigning || host.Timers.Capture(host).Any(timer => timer.EndsAt <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+            return Error("MatchBusy");
         if (host.Match.GameOverD) return Error("MatchFinished");
         if (host.Match.HasResigned(host.SeatInitialization[seat].accountID)) return Error("SeatResigned");
         if (op == "prices")

@@ -27,6 +27,7 @@ internal sealed class MatchLobby
         names[seat] = name;
     }
     public void Touch(int seat) => seen[seat] = DateTime.UtcNow;
+    public bool Connected(int seat) => seen[seat] != default && DateTime.UtcNow - seen[seat] <= TimeSpan.FromSeconds(15);
     public void SetReady(int seat, bool value) { ready[seat] = value; Touch(seat); }
     public SeatStatus[] Status(MatchSetup setup, Func<int, bool> resigned) => Enumerable.Range(0, 6).Select(seat =>
         new SeatStatus(seat + 1, MatchSetup.FactionName(setup.Factions[seat]) + (string.IsNullOrEmpty(names[seat]) ? "" : $": {names[seat]}"),

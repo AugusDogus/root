@@ -22,6 +22,7 @@ public sealed class AuthorityBehaviour : MonoBehaviour
     {
         UnityEngine.Object.DontDestroyOnLoad(gameObject);
         Application.targetFrameRate = 60;
+        if (Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "lobby-data-tests") { LobbyDataProbe.Run(); return; }
         server = LoopbackProbe.Run(Log, routine => StartCoroutine(routine));
     }
     public void Update()

@@ -2,7 +2,7 @@
 from pathlib import Path
 
 GIB = 1024 ** 3
-LIMIT = 4 * GIB
+LIMIT = 8 * GIB
 RESERVE = 8 * GIB
 UNIT = 'root-private-test.service'
 
@@ -22,6 +22,6 @@ def require_test_budget():
     limit = (group / 'memory.max').read_text().strip()
     swap = (group / 'memory.swap.max').read_text().strip()
     if limit == 'max' or int(limit) > LIMIT or swap != '0':
-        raise RuntimeError('The test needs a maximum 4 GiB RAM budget and no swap. No game was started.')
+        raise RuntimeError('The test needs a maximum 8 GiB RAM budget and no swap. No game was started.')
     if available_memory() < RESERVE:
         raise MemoryError('Less than 8 GiB RAM is available for the desktop. No game was started.')

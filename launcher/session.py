@@ -7,7 +7,7 @@ import sys
 import subprocess
 import threading
 
-from network import ClientRelay, HostRelay, exchange, parse_invite, relay_url
+from network import exchange
 from prepare import prepare
 from runtime import GameProcess, bootstrap
 from steam import discover, proton_paths
@@ -25,8 +25,6 @@ class Session:
         self.invitations = []
         self.host = None
         self.client = None
-        self.host_relay = None
-        self.client_relay = None
         self.endpoint = None
         self.save = ''
         self.worker = None
@@ -45,8 +43,6 @@ class Session:
                     self.invitations = invites
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
-        if self.host_relay is not None and self.host_relay.error:
-            error = self.host_relay.error
         for role, process in [('Host', self.host), ('Client', self.client)]:
             if process is not None and process.process.poll() is not None:
                 error = f'{role} has exited. Stop this session, then resume or rejoin. Saved moves are preserved.'
@@ -116,14 +112,8 @@ class Session:
         if native_host and (not self.native_menu or self.client is None or self.host is not None):
             raise ValueError('Open the six-player game menu before starting a match.')
         if action in ('host', 'resume', 'host-native', 'resume-native'):
-            transport = 'steam' if native_host else values.get('transport', 'steam')
-            if transport not in ('steam', 'cloudflare'):
-                raise ValueError('Choose Steam or Cloudflare networking.')
-            if transport == 'cloudflare':
-                url = relay_url(values.get('relay', ''))
-                key = values.get('key', '')
-                if not key:
-                    raise ValueError('Enter the relay host key. Guests only need their seat invitation.')
+            if values.get('transport', 'steam') != 'steam':
+                raise ValueError('This launcher supports Steam networking only. Open Root through the launcher and invite friends in game.')
             saves = self.data / 'saves'
             saves.mkdir(exist_ok=True)
             if action in ('resume', 'resume-native'):
@@ -133,6 +123,14 @@ class Session:
             else:
                 filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_') + secrets.token_hex(3) + '.json'
             self.save = filename
+            initialization_file = self.data / 'host/native-setup.json'
+            if action == 'host-native' and values.get('initialization'):
+                initialization = json.loads(values['initialization'])
+                if not isinstance(initialization, dict):
+                    raise ValueError('Root did not return a valid game configuration. Return to setup and try again.')
+                initialization_file.write_text(json.dumps(initialization))
+            else:
+                initialization_file.unlink(missing_ok=True)
             setup_file = self.data / 'host/match-setup.json'
             if action in ('host', 'host-native') and values.get('setup'):
                 setup = json.loads(values['setup'])
@@ -146,35 +144,21 @@ class Session:
                                     save=saves / filename, resume=action in ('resume', 'resume-native'))
             self.endpoint = self.host.endpoint()
             connection = {'port': self.endpoint['port'], 'token': self.endpoint['tokens'][0]}
-            if transport == 'steam':
-                # Exclude the authority's shutdown credential from the graphical Steam process.
-                config = {'port': self.endpoint['port'], 'tokens': self.endpoint['tokens']}
-                if 'setup' in self.endpoint:
-                    config['setup'] = self.endpoint['setup']
-                (self.data / 'client/steam-config.json').write_text(json.dumps(config))
-                mode = 'steam-host'
-                self.progress('Opening your chosen faction and Steam networking. Invite your friends from the game.')
-            else:
-                self.host_relay = HostRelay(url, key, self.endpoint['port'], self.endpoint['tokens'])
-                self.invitations = self.host_relay.invitations
-                mode = 'client'
-                self.progress('Host ready. Opening your chosen faction. Share one invitation per friend. Sessions last up to 12 hours.')
+            # Exclude the authority's shutdown credential from the graphical Steam process.
+            config = {'port': self.endpoint['port'], 'tokens': self.endpoint['tokens']}
+            if 'setup' in self.endpoint:
+                config['setup'] = self.endpoint['setup']
+            if self.endpoint.get('pending'):
+                config['pending'] = True
+            (self.data / 'client/steam-config.json').write_text(json.dumps(config))
+            mode = 'steam-host'
+            self.progress('Opening your chosen faction and Steam networking. Invite your friends from the game.')
         elif action == 'join':
-            text = values.get('invite', '')
-            if text.startswith('root6:'):
-                (self.data / 'client/steam-config.json').write_text(json.dumps({'invite': validate_invite(text)}))
-                self.progress('Opening your seat through Steam networking. Keep Steam signed in.')
-                self.client = GameProcess(installation, self.data / 'client', 'steam-client', headless=self.headless)
-                return
-            invite = parse_invite(text)
-            self.client_relay = ClientRelay(invite)
-            connection = {'port': self.client_relay.port, 'token': invite['token']}
-            # Reject stale invitations before starting another heavy game process.
-            reply = json.loads(exchange(connection['port'], json.dumps({'op': 'join', 'token': connection['token']}).encode()))
-            if reply.get('ok') is not True:
-                raise ValueError(f'Cannot join: {reply.get("error", "host rejected the invitation")}')
-            mode = 'client'
-            self.progress(f'Opening seat {invite["seat"]}. First launch may take several minutes…')
+            invite = validate_invite(values.get('invite', ''))
+            (self.data / 'client/steam-config.json').write_text(json.dumps({'invite': invite}))
+            self.progress('Opening your seat through Steam networking. Keep Steam signed in.')
+            self.client = GameProcess(installation, self.data / 'client', 'steam-client', headless=self.headless)
+            return
         elif action in ('wait', 'play'):
             self.progress('Opening Root to receive a Steam invitation. Wait for Ready in the game, then accept your host’s invitation through Steam.')
             self.native_menu = action == 'play'
@@ -190,14 +174,12 @@ class Session:
     def stop(self):
         errors = []
         # Stop request sources before gracefully shutting down the native host.
-        for attribute in ('client', 'client_relay', 'host_relay'):
-            resource = getattr(self, attribute)
-            if resource is not None:
-                try:
-                    resource.close()
-                    setattr(self, attribute, None)
-                except Exception as error:
-                    errors.append(str(error))
+        if self.client is not None:
+            try:
+                self.client.close()
+                self.client = None
+            except Exception as error:
+                errors.append(str(error))
         if self.host is not None:
             if self.endpoint is not None and self.host.process.poll() is None:
                 try:
@@ -216,6 +198,7 @@ class Session:
         for name in ('steam-config.json', 'steam-status.json'):
             (self.data / 'client' / name).unlink(missing_ok=True)
         (self.data / 'host/match-setup.json').unlink(missing_ok=True)
+        (self.data / 'host/native-setup.json').unlink(missing_ok=True)
         self.progress('Session stopped. Saved matches are kept. Resume creates new invitations.')
         if errors:
             raise RuntimeError('Some session processes could not be stopped: ' + '; '.join(errors))

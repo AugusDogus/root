@@ -15,6 +15,15 @@ internal static class MatchSetupTests
             if (setup.Validate() is null) throw new Exception("Invalid settings were accepted");
         }
         Valid(new());
+        Valid(new() { Factions = new[] { 4, 4, 4, 4, 4, 4 }, AdvancedSetup = true, FactionDraft = true });
+        Invalid(new() { Factions = new[] { 4, 4, 4, 4, 4, 4 } });
+        var pending = new MatchSetup { Factions = new[] { 0, 4, 2, 3, 6, 7 } };
+        if (MatchSetup.Parse(JsonSerializer.Serialize(pending), pendingLobby: true).FactionDraft)
+            throw new Exception("An open lobby seat must not enable faction drafting");
+        if (new MatchSetup { Factions = new[] { 0, 0, 4, 4, 4, 4 } }.Validate(pendingLobby: true) is null)
+            throw new Exception("An online lobby accepted duplicate chosen factions");
+        Invalid(new() { FactionDraft = true });
+        Invalid(new() { Factions = new[] { 0, 0, 4, 4, 4, 4 }, AdvancedSetup = true, FactionDraft = true });
         var ai = new MatchSetup { AI = new AIDifficulty?[] { null, null, AIDifficulty.Easy, AIDifficulty.Medium, AIDifficulty.Hard, AIDifficulty.Medium } };
         Valid(ai);
         if (!MatchSetup.Parse(JsonSerializer.Serialize(ai)).AI.SequenceEqual(ai.AI))

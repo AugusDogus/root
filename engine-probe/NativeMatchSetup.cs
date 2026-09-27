@@ -8,18 +8,25 @@ internal static class NativeMatchSetup
 {
     private const string AISeatKey = "rootSixPlayer.aiSeat";
 
+    public static void RecordController(TuberPlayerMatchInitData player)
+    {
+        if (!player.isHuman && !MatchSetup.IsClockwork((int)player.Faction)) player.metadata[AISeatKey] = "true";
+        else player.metadata.Remove(AISeatKey);
+    }
+
     // Native HasResigned also returns true for seats created as ordinary AI.
     // Keep original seat ownership in saved initialization metadata. Older
     // saves have no marker and used humans for every non-Clockwork faction.
     public static bool IsHumanSeat(TuberPlayerMatchInitData player) =>
         !MatchSetup.IsClockwork((int)player.Faction) && !player.metadata.ContainsKey(AISeatKey);
 
-    public static string? Validate(MatchSetup setup)
+    public static string? Validate(MatchSetup setup, bool pendingLobby = false)
     {
-        if (setup.Validate() is { } error) return error;
+        if (setup.Validate(pendingLobby) is { } error) return error;
         var factions = setup.Factions.Concat(setup.Hirelings).Select(id => (Factions)id).ToArray();
         foreach (var faction in factions)
         {
+            if (faction == Factions.Invalid && (setup.FactionDraft || pendingLobby)) continue;
             var released = setup.Hirelings.Contains((int)faction) ? lib.data.FactionUtils.ReleasedHirelings
                 : MatchSetup.IsClockwork((int)faction) ? lib.data.FactionUtils.ClockworkFactions : lib.data.FactionUtils.ReleasedPlayerFactions;
             if (!released.Contains(faction)) return $"{faction} is not available in this version of Root.";
@@ -57,7 +64,9 @@ internal static class NativeMatchSetup
         init.ChosenMap = (MapLayout)setup.Map;
         init.ChosenDeck = (DeckOptions)setup.Deck;
         init.AdvancedSetup = setup.AdvancedSetup;
-        init.AdsetDisableDraft = setup.AdvancedSetup;
+        init.AdsetDisableDraft = setup.AdvancedSetup && !setup.FactionDraft;
+        init.CooperativeMode = setup.CooperativeMode;
+        init.EnableBluff = setup.EnableBluff;
         init.Hirelings = setup.Hirelings.Length != 0;
         init.DisableRandomHirelings = true;
         init.HirelingsList = new();
@@ -76,6 +85,8 @@ internal static class NativeMatchSetup
             ? null : (AIDifficulty?)player.aiLevel).ToArray(),
         Characters = seats.Select(player => (int)player.StartingCharacter).ToArray(),
         Map = (int)init.ChosenMap, Deck = (int)init.ChosenDeck, AdvancedSetup = init.AdvancedSetup,
+        FactionDraft = init.AdvancedSetup && !init.AdsetDisableDraft,
+        CooperativeMode = init.CooperativeMode, EnableBluff = init.EnableBluff,
         BotDifficulty = ReadBotDifficulty(init),
         BotTraits = seats.Select(NativeClockwork.ReadTraits).ToArray(),
         VagabotCharacter = NativeClockwork.ReadCharacter(seats),

@@ -2,30 +2,39 @@
 
 A mod and launcher for private six-player games of [Root](https://store.steampowered.com/app/965580/Root/) with Steam friends, on Windows and Linux.
 
-The launcher finds your Steam installation, prepares a separate modded copy, and opens Root. Host, join, and play through the game's native menus and board. Your regular Steam installation stays unchanged.
+![A six-player Root match with two Vagabonds on the Mountain map](docs/screenshots/board.png)
+
+## Download
+
+**[Download Root Six Player](https://github.com/AugusDogus/root-six-player/releases/latest)**
+
+| System | Download and run |
+| --- | --- |
+| Windows | Open `RootSixPlayer.exe` |
+| Linux | Extract `root-six-player-…-linux.zip`, then open **Root Six Player** |
+
+The launcher finds Root, sets up a separate modded copy, and opens the game. First launch can take a few minutes. Everyone in a match should use the same release.
+
+Downloads require access to this private repository.
+
+## Requirements
+
+| Component | Requirement |
+| --- | --- |
+| Platform | Windows or Linux, x86_64 |
+| Game | Root installed through Steam, version **2.1.5**, build **22238765** |
+| Steam | Running and signed in |
+| Linux | Proton Experimental and Steam Linux Runtime 4, installed through Steam |
 
 ## Features
 
-- Six seats with human players, ordinary faction AI, and Clockwork bots.
-- Steam invitations and peer-to-peer networking.
-- Native faction selection, expansion options, maps, decks, and advanced setup.
+- Six seats for friends, faction AI, or Clockwork bots.
+- Steam invitations and peer-to-peer multiplayer.
+- Root's faction selection, maps, decks, and advanced setup.
 - In-game chat, turn timers, autosaves, and match recovery.
-- Automatic mod setup, with no Python installation or manual BepInEx configuration.
+- All installed gameplay expansions available in the private playtest.
 
-## Get the launcher
-
-For now, download a test build from [GitHub Actions](https://github.com/AugusDogus/root-six-player/actions/workflows/launcher.yml): open the latest successful run and download its **launcher-…** artifact. Extract that download, then use the file for your system:
-
-| System | What to open |
-| --- | --- |
-| Windows | `RootSixPlayer.exe` |
-| Linux | Extract `root-six-player-…-linux.zip`, then open **Root Six Player** |
-
-Everyone in a match should use the same build. Downloads currently require access to this private repository. Tagged builds will also appear on the [Releases page](https://github.com/AugusDogus/root-six-player/releases).
-
-Each player needs Root installed through Steam and Steam running. The supported game version is **Root 2.1.5, Steam build 22238765**. Linux also needs **Proton Experimental** and **Steam Linux Runtime 4**, installed through Steam.
-
-First launch can take a few minutes while the launcher prepares the mod. It closes automatically once Root opens.
+![Root's game settings with map, deck, timer, AI difficulty, and faction options](docs/screenshots/settings.png)
 
 ## Play with friends
 
@@ -34,27 +43,22 @@ First launch can take a few minutes while the launcher prepares the mod. It clos
 3. **Join:** friends open their launcher and choose **Join friends** before accepting the invitation. Each friend chooses a faction in the waiting room and clicks **Join Game**.
 4. **Start:** the host starts the match once everyone has joined.
 
-Open the mod before accepting an invitation, or Steam will open ordinary Root. Keep the host's computer on while playing.
+Open the mod before accepting an invitation, or Steam will open ordinary Root. Keep the host's game running while playing.
 
 Matches save automatically. To continue later, the host chooses **Resume a game** and sends new invitations. Active turn timers continue while the host is closed.
-
-All gameplay expansions included in the installed game are available in this private playtest. Root's faction and setup restrictions still apply. Ordinary Steam Root and purchases are unchanged.
 
 ## Updates and troubleshooting
 
 Close Root before opening a newer launcher. Updates preserve compatible saved matches. Everyone should update together.
 
-If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text and a short description when [reporting an issue](https://github.com/AugusDogus/root-six-player/issues). Diagnostics exclude saves, chat, account names, and invitation secrets.
+If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text when [reporting an issue](https://github.com/AugusDogus/root-six-player/issues).
 
 ## Playtest status
 
-This is an experimental build. Automated checks cover game logic, recovery, selected six-player screens, and launcher builds on Windows and Linux. Steam invitations between different accounts, Internet play, and native Windows gameplay still need real-player testing.
+Experimental. Steam invitations between different accounts, Internet play, and native Windows gameplay still need real-player testing.
 
 ## Development
 
-- [Development setup, architecture, and test coverage](docs/development.md)
-- [CI builds and releases](docs/launcher-ci.md)
-- [Six-player UI audit](docs/native-ui-audit.md)
-- [Release notes](RELEASE.md)
+[Build and test](docs/development.md) · [CI and releases](docs/launcher-ci.md) · [UI audit](docs/native-ui-audit.md) · [Release notes](RELEASE.md)
 
-The repository contains the mod and launcher source. Root game files are not distributed. BepInEx and other bundled dependencies include their license notices and corresponding sources where required.
+[Screenshot provenance](docs/screenshots/README.md). Bundled dependencies include their license notices and corresponding sources where required.

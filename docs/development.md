@@ -70,7 +70,7 @@ The **Match** button shows seat presence and readiness. Ready indicators are inf
 
 Close the game before updating, then open the new launcher. It replaces only recognized mod files, rolls back failed updates, and preserves saves and the Steam installation. Everyone must use the same release. Source version 0.7.0 uses invitation protocol 6 and writes version 4 saves, including chat history and timer deadlines. It reads version 1, 2, and 3 saves; earlier releases cannot load newly written saves. **Get updates** opens the repository's releases page; private downloads require repository access.
 
-GitHub Actions builds Windows and Linux player packages on pushes to `main` and manual runs. Matching version tags automatically publish prereleases after all checks, including the Windows executable smoke test, pass. See [launcher CI setup](launcher-ci.md) for the one-time Steam login setup. CI downloads Root and generates its build references automatically. The local `scripts/release-launcher.py` remains available as a draft-release fallback; both paths validate and upload only the Windows EXE, two player ZIPs, and checksums.
+GitHub Actions builds Windows and Linux player packages on pushes to `main` and manual runs. Matching version tags automatically publish the latest release after all checks, including the Windows executable smoke test, pass. See [launcher CI setup](launcher-ci.md) for the one-time Steam login setup. CI downloads Root and generates its build references automatically. The local `scripts/release-launcher.py` remains available as a draft-release fallback; both paths validate and upload only the Windows EXE, two player ZIPs, and checksums.
 
 ## DLC setup
 

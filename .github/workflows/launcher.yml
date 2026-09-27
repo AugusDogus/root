@@ -165,5 +165,5 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           (cd packages && sha256sum --check SHA256SUMS)
-          gh release create "$RELEASE_TAG" --verify-tag --prerelease \
+          gh release create "$RELEASE_TAG" --verify-tag --latest \
             --title "Root Six Player ${RELEASE_TAG#v}" --notes-file RELEASE.md packages/*

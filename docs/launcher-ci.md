@@ -13,9 +13,10 @@ the CI toolchain upgrade does not update the runtime shipped to players.
   packaging-helper tests, and the standalone multiplayer protocol tests.
 - Pushes to `main` and manual **Run workflow** runs also compile the mod, build
   both launchers, and upload a `launcher-<commit>` artifact for 14 days.
-- Version tags such as `v0.7.0` do the same and automatically publish a prerelease
+- Version tags such as `v0.7.0` do the same and automatically publish a release
   after all checks, including the Windows executable smoke test, pass. Pushing
-  the tag is the release action. Existing releases are never overwritten.
+  the tag is the release action. It becomes the latest release so the README's
+  download link resolves to it. Existing releases are never overwritten.
 
 Player assets are `RootSixPlayer.exe`, the Windows and Linux ZIPs, and
 `SHA256SUMS`. Each ZIP contains one executable. Dependencies and their notices
@@ -81,7 +82,7 @@ both launcher packages, and the native Windows executable smoke test.
 Update version declarations in the launcher, packager, mod, and `RELEASE.md`
 together. CI rejects a tag that disagrees with these versions. After the reviewed
 commit is on `main`, push its matching version tag. Downloadable artifacts are
-available from the workflow run; the published prerelease holds the same tested files.
+available from the workflow run; the published release holds the same tested files.
 Use a new version if a release already exists.
 
 Local builds still use `scripts/safe-test.py`. The packaging and CI preparation commands have a

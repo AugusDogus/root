@@ -29,6 +29,23 @@ func discoveryFixture(t *testing.T, library string) string {
 	return game
 }
 
+func discoverySameDirectory(t *testing.T, actual, expected string) {
+	t.Helper()
+	actualInfo, err := os.Stat(actual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedInfo, err := os.Stat(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows can expand an 8.3 temporary path during symlink resolution.
+	// Discovery must identify the same directory, regardless of its spelling.
+	if !actualInfo.IsDir() || !expectedInfo.IsDir() || !os.SameFile(actualInfo, expectedInfo) {
+		t.Fatalf("discovered directory %q does not identify %q", actual, expected)
+	}
+}
+
 func TestDiscoverAdditionalSteamLibrary(t *testing.T) {
 	root := t.TempDir()
 	steam, library := filepath.Join(root, "Steam"), filepath.Join(root, "Other Library")
@@ -40,9 +57,11 @@ func TestDiscoverAdditionalSteamLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inst.Game != game || len(inst.Libraries) != 2 || inst.Steam != steam {
+	if len(inst.Libraries) != 2 {
 		t.Fatalf("unexpected installation: %#v", inst)
 	}
+	discoverySameDirectory(t, inst.Game, game)
+	discoverySameDirectory(t, inst.Steam, steam)
 }
 
 func TestDiscoveryRejectsWrongBuildAndMissingFiles(t *testing.T) {
@@ -90,9 +109,10 @@ func TestDiscoverLegacySteamLibrary(t *testing.T) {
 	discoveryWrite(t, filepath.Join(steam, "steamapps", "libraryfolders.vdf"),
 		fmt.Sprintf(`"LibraryFolders" { "TimeNextStatsReport" "123456" "1" "%s" }`, quoted))
 	inst, err := discoverAt("", []string{steam})
-	if err != nil || inst.Game != game || len(inst.Libraries) != 2 {
+	if err != nil || len(inst.Libraries) != 2 {
 		t.Fatalf("legacy library was not discovered: %#v, %v", inst, err)
 	}
+	discoverySameDirectory(t, inst.Game, game)
 }
 
 func TestProtonAndRuntimeMayUseDifferentLibraries(t *testing.T) {
@@ -117,9 +137,10 @@ func TestDiscoveryUsesManifestDirectory(t *testing.T) {
 	discoveryWrite(t, filepath.Join(root, "steamapps", "appmanifest_"+AppID+".acf"),
 		fmt.Sprintf(`"appid" "%s" "buildid" "%s" "installdir" "Root Custom Folder"`, AppID, GameBuild))
 	inst, err := discoverAt("", []string{root})
-	if err != nil || inst.Game != renamed {
+	if err != nil {
 		t.Fatalf("manifest directory was not discovered: %v, %v", inst, err)
 	}
+	discoverySameDirectory(t, inst.Game, renamed)
 }
 
 func TestDiscoveryRejectsManifestPathTraversal(t *testing.T) {

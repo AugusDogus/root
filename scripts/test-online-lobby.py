@@ -27,7 +27,7 @@ def main():
     factions = [0, 2, 11, 3, 6, 7] if dlc else [0, 1, 2, 3, 6, 7]
     controllers = [0, 0, 2, 1, 1, 1] if dlc else [0, 0, 1, 1, 1, 1]
     expected_ai = [None, None, None, 1, 1, 1] if dlc else [None, None, 1, 1, 1, 1]
-    guest_faction = 'WoodlandAlliance' if dlc else 'EyrieDynasties' 
+    guest_faction = 'WoodlandAlliance' if dlc else 'EyrieDynasties'
     lab = Path(sys.argv[sys.argv.index('--lab') + 1]).resolve() if '--lab' in sys.argv else PROJECT / '.lab/native-session-probe'
     output = lab / 'client/results/online-setup-probe'
     output.mkdir(parents=True, exist_ok=True)

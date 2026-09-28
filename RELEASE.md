@@ -1,14 +1,13 @@
-# Root Six Player 0.7.0
+# Root Six Player 0.7.1
 
-Open one launcher to play private six-player Root with Steam friends.
+Fixes for lobby navigation and blocked game actions:
 
-- Windows and Linux launchers.
-- Automatic Steam discovery and isolated mod setup.
-- Bundled BepInEx and Unity setup libraries.
-- Root's native setup, waiting room, board, chat, and turn timers.
-- Human seats, ordinary AI, and Clockwork options supplied by the game.
-- All installed gameplay expansions available in the private playtest.
-- Copy diagnostics from Match or an error screen when reporting a problem.
+- Back returns from the lobby to an interactive menu.
+- All six character models remain visible through setup and lobby creation. Seats five and six no longer show duplicate models.
+- Reset includes all six seats, and you can change seats to AI after leaving a lobby.
+- Declining Riverfolk services and resigning through Root's menu reach the private host.
+- Exploring ruins displays the available items. Existing saves recover visibility for players who explored those ruins.
+- Removed the in-game ready button and board-level invitation button. Disconnected seats can be reassigned from Match.
 
 On Windows, download and open **RootSixPlayer.exe**. On Linux, extract the ZIP and open
 **Root Six Player**. Install Root and keep Steam open. Linux also needs Proton

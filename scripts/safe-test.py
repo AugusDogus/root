@@ -13,11 +13,13 @@ from test_diagnostics import atomic_json, create_run, finish_run, progress
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
-from test_budget import LIMIT, RESERVE, UNIT, available_memory, require_test_budget
+from test_budget import LIMIT, RESERVE, UNIT, available_memory, external_game_running, require_test_budget
 
 
 def supervise(command):
     require_test_budget()
+    if external_game_running():
+        raise RuntimeError('Root is running outside the test session. Close it before starting development tests.')
     child = subprocess.Popen(command, cwd=PROJECT, start_new_session=True)
     def completed(code):
         atomic_json(Path(os.environ['ROOT_TEST_RUN_DIR']) / 'command-exit.json', {'exit_code': code})
@@ -26,6 +28,9 @@ def supervise(command):
         while child.poll() is None:
             if available_memory() < RESERVE:
                 print('Stopping this test: available RAM fell below the 8 GiB desktop reserve.', file=sys.stderr, flush=True)
+                return 1
+            if external_game_running():
+                print('Stopping this test: Root started outside the test session. Your game will keep running.', file=sys.stderr, flush=True)
                 return 1
             try:
                 return completed(child.wait(timeout=1))
@@ -59,6 +64,8 @@ def main():
             raise RuntimeError('Another constrained development job is running. Wait for it to finish.') from None
         if available_memory() < LIMIT + RESERVE:
             raise MemoryError('At least 16 GiB available RAM is required: 8 GiB for testing and 8 GiB for the desktop.')
+        if external_game_running():
+            raise RuntimeError('Root is running outside the test session. Close it before starting development tests.')
         run = create_run(PROJECT / '.lab/test-runs')
         log = run / 'output.log'
         progress(f'Test log: {log}')

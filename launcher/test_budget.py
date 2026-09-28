@@ -7,6 +7,23 @@ RESERVE = 8 * GIB
 UNIT = 'root-private-test.service'
 
 
+def external_game_running(proc=Path('/proc')):
+    for process in proc.iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            if (process / 'comm').read_text().strip().lower() != 'root.exe':
+                continue
+            membership = (process / 'cgroup').read_text().strip().split('::', 1)[1]
+            if Path(membership).name != UNIT:
+                return True
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            # Processes can exit during inspection; other users' processes are
+            # not part of this desktop session.
+            continue
+    return False
+
+
 def available_memory():
     for line in Path('/proc/meminfo').read_text().splitlines():
         if line.startswith('MemAvailable:'):

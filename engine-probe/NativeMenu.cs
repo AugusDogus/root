@@ -64,6 +64,13 @@ internal sealed class NativeMenu
         if (hosting) Button("Invite friends", 955, 10, 240, 44, Seats);
     }
     public void ReturnToBoard() => Toolbar();
+    public void ShowLanding()
+    {
+        Reset();
+        var prompt = new LandingPrompt(Array.Empty<string>());
+        dwd.core.commands.CommandExecutor.Get().Execute(new tuber.client.prompt.commands.DisplayTuberPrompt(
+            TuberModalScope.Menus, prompt.Cast<dwd.core.ui.prompt.prompts.IPrompt>(), new TuberPromptDisplayData(false, true)));
+    }
     public void Reset()
     {
         Destroy(); root = null; page = null; chat = null; lobby = null; matchMenu = null;
@@ -144,7 +151,7 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.7.0 · Friends' playtest", 28, 635, 410, 32, 18);
+        Text("Version 0.7.1 · Friends' playtest", 28, 635, 410, 32, 18);
         Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
@@ -217,8 +224,7 @@ internal sealed class NativeMenu
     {
         if (!playing) { LobbyToolbar(); return; }
         Begin(false, "playing");
-        if (hosting) Button("Invite friends", -195, 80, 185, 44, Seats);
-        if (matchMenu is { } controls) Button("Match", -195, hosting ? 132 : 80, 185, 44, controls.Show);
+        if (matchMenu is { } controls) Button("Match", -195, 80, 185, 44, controls.Show);
         // Anchor to the edge below Root's own top-right controls at any aspect ratio.
         if (page != null)
             foreach (var child in page.GetComponentsInChildren<RectTransform>())

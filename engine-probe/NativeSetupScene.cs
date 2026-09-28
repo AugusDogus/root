@@ -1,3 +1,5 @@
+using dwd.core.prefabs.implementations.byflavor;
+using HarmonyLib;
 using tuber.client.menus.prompts;
 using tuber.client.menus.behaviours;
 using UnityEngine;
@@ -5,49 +7,59 @@ using Object = UnityEngine.Object;
 
 namespace RootEngineProbe;
 
-// The animated faction figures live in a separate native scene from the cards.
-internal sealed class NativeSetupScene : IDisposable
+// The animated faction figures live in a scene shared by setup and the lobby.
+// Keep its six slots until Unity unloads the scene, including between prompts.
+internal static class NativeSetupScene
 {
-    private readonly ConfigureGameScenePromptBehaviour view;
-    private readonly SubscriptionProvider[] original;
-    private readonly Vector3[] positions;
-    private readonly Vector3[] scales;
-    private readonly GameObject[] added;
-    private readonly PlayerSlotSpacingRenderer[] spacing;
+    private static bool patched;
 
-    public NativeSetupScene(ConfigureGameScenePromptBehaviour view)
+    public static void Extend(ConfigureGameScenePromptBehaviour view)
     {
-        this.view = view;
-        original = view.playerSlots.ToArray();
-        positions = original.Select(slot => slot.transform.localPosition).ToArray();
-        scales = original.Select(slot => slot.transform.localScale).ToArray();
-        spacing = view.GetComponentsInChildren<PlayerSlotSpacingRenderer>(true).Where(item => item.enabled).ToArray();
-        foreach (var item in spacing) item.enabled = false;
+        if (!patched)
+        {
+            new Harmony("local.root.six-player-figures").Patch(
+                AccessTools.Method(typeof(ConfigureGamePlayerSlot), "dataChanged"),
+                postfix: new HarmonyMethod(typeof(NativeSetupScene), nameof(RefreshFigure)));
+            patched = true;
+        }
+        if (view.playerSlots.Length == 6) return;
+        var original = view.playerSlots.ToArray();
+        var positions = original.Select(slot => slot.transform.localPosition).ToArray();
+        var scale = original[0].transform.localScale * 0.7f;
+        foreach (var spacing in view.GetComponentsInChildren<PlayerSlotSpacingRenderer>(true)) spacing.enabled = false;
         var slots = original.ToList();
         var template = original[^1];
-        added = Enumerable.Range(0, 6 - original.Length)
-            .Select(_ => Object.Instantiate(template.gameObject, template.transform.parent)).ToArray();
-        slots.AddRange(added.Select(item => item.GetComponent<SubscriptionProvider>()));
+        while (slots.Count < 6)
+        {
+            var clone = Object.Instantiate(template.gameObject, template.transform.parent);
+            // The template can already have a spawned character. Unity copies
+            // that child, but not the subscriber's runtime instance reference.
+            foreach (var model in clone.GetComponentsInChildren<PrefabByFlavorMetadata>(true))
+            {
+                model.gameObject.SetActive(false);
+                Object.Destroy(model.gameObject);
+            }
+            foreach (var figure in clone.GetComponentsInChildren<ConfigureGamePlayerSlot>(true))
+            {
+                figure.currentPrefab = null;
+                figure.instance = null;
+            }
+            slots.Add(clone.GetComponent<SubscriptionProvider>());
+        }
         view.playerSlots = slots.ToArray();
         var margin = (positions[^1] - positions[0]) * 0.05f;
         for (var index = 0; index < 6; index++)
         {
             slots[index].transform.localPosition = Vector3.Lerp(positions[0] - margin, positions[^1] + margin, index / 5f);
-            slots[index].transform.localScale = scales[0] * 0.7f;
+            slots[index].transform.localScale = scale;
         }
     }
 
-    public void Dispose()
+    private static void RefreshFigure(ConfigureGamePlayerSlot __instance)
     {
-        if (view == null) return;
-        view.playerSlots = original;
-        for (var index = 0; index < original.Length; index++)
-            if (original[index] != null)
-            {
-                original[index].transform.localPosition = positions[index];
-                original[index].transform.localScale = scales[index];
-            }
-        foreach (var item in added) if (item != null) Object.Destroy(item);
-        foreach (var item in spacing) if (item != null) item.enabled = true;
+        // New empty-seat data can have version zero, just like the native
+        // cache after rebinding. Force the first model lookup for all six slots.
+        if (__instance.GetComponentInParent<ConfigureGameScenePromptBehaviour>()?.playerSlots.Length == 6)
+            __instance.cachedFactionVersion = ulong.MaxValue;
     }
 }

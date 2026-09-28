@@ -24,7 +24,6 @@ internal sealed class NativeOnlineSetupFlow
     private readonly Action cancelled;
     private DisplayTuberPrompt? command;
     private ConfigureGamePrompt? prompt;
-    private NativeSetupScene? scene;
     private TMPro.TMP_Text? title;
     private ConfigureOnlineGamePromptBehaviour? view;
 
@@ -59,8 +58,6 @@ internal sealed class NativeOnlineSetupFlow
         if (title != null && title.text != "Six Player") title.text = "Six Player";
         if (command is not { Completed: true } completed) return;
         command = null;
-        scene?.Dispose();
-        scene = null;
         title = null;
         view = null;
         active = null;
@@ -83,6 +80,8 @@ internal sealed class NativeOnlineSetupFlow
             prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ExtendView)));
         harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "Event_Back"),
             prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(Back)));
+        harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "Event_ResetToDefault"),
+            postfix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ResetAdditionalSeats)));
         harmony.Patch(AccessTools.Method(typeof(ConfigureGameScenePromptBehaviour), "initialize"),
             prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ExtendScene)));
         harmony.Patch(AccessTools.Method(typeof(ConfigureGameDetailsPromptBehaviour), "initialize"),
@@ -99,6 +98,21 @@ internal sealed class NativeOnlineSetupFlow
         return false;
     }
 
+    private static void ResetAdditionalSeats(ConfigureOnlineGamePromptBehaviour __instance)
+    {
+        if (!Owns(__instance.Prompt)) return;
+        // The native reset explicitly names only the original four slots.
+        __instance.Prompt.PlayerSlots[1].GetOne<PlayerSlotLockData>().PlayerTypeLocked = false;
+        for (var seat = 4; seat < 6; seat++)
+        {
+            var slot = __instance.Prompt.PlayerSlots[seat];
+            slot.GetOne<PlayerTypeData>().Type = PlayerTypeData.PlayerType.Human;
+            slot.GetOne<FactionData>().Faction = new Il2CppSystem.Nullable<tuber_canis.data.Factions>(tuber_canis.data.Factions.Invalid);
+            slot.GetOne<PlayerSlotLockData>().FactionLocked = true;
+            slot.GetOne<PlayerSlotLockData>().PlayerTypeLocked = false;
+        }
+    }
+
     private static void ConfigureDetails(ConfigureGameDetailsPromptBehaviour __instance)
     {
         if (active is not null) NativePrivateOptions.Configure(__instance);
@@ -106,9 +120,9 @@ internal sealed class NativeOnlineSetupFlow
 
     private static void ExtendScene(ConfigureGameScenePromptBehaviour __instance)
     {
-        if (__instance.Prompt.TryCast<ConfigureGamePrompt>() is not { } prompt || !Owns(prompt) || active is not { } flow) return;
+        if (__instance.Prompt.TryCast<ConfigureGamePrompt>() is not { } prompt || !Owns(prompt)) return;
         ExtendModel(prompt);
-        flow.scene ??= new NativeSetupScene(__instance);
+        NativeSetupScene.Extend(__instance);
     }
 
     private static void ExtendModel(ConfigureGamePrompt __instance)
@@ -118,7 +132,7 @@ internal sealed class NativeOnlineSetupFlow
         var slots = __instance.PlayerSlots.list.Cast<Il2CppSystem.Collections.Generic.ICollection<DataComposition>>();
         while (slots.Count < 6)
         {
-            var faction = new FactionData(new Il2CppSystem.Nullable<tuber_canis.data.Factions>());
+            var faction = new FactionData(new Il2CppSystem.Nullable<tuber_canis.data.Factions>(tuber_canis.data.Factions.Invalid));
             var controller = new PlayerTypeData(PlayerTypeData.PlayerType.Human);
             var locks = new PlayerSlotLockData(true, false);
             slots.Add(new DataComposition(new DataComponent[]

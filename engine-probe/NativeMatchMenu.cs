@@ -33,7 +33,7 @@ internal sealed class NativeMatchMenu
         }
         if (client.GameOver && client.Standings.Length == 6 && view.IsPlaying && !resultsShown) { resultsShown = true; Results(); }
         // Keep the pressed button alive through release and Unity's click event.
-        // Readiness can change while the player is already pressing another control.
+        // Connection state can change while the player is pressing a control.
         if (view.Screen == "match" && UnityEngine.Input.anyKey)
             refreshAt = Math.Max(refreshAt, now + 0.3f);
         if (view.Screen == "match" && now >= refreshAt)
@@ -48,20 +48,18 @@ internal sealed class NativeMatchMenu
         view.Begin(true, "match");
         view.Text("Your table", 80, 40, 650, 65, 38);
         view.DiagnosticsButton(840, 30);
-        view.Text("Mark ready when you are ready to play. Readiness does not pause the match.", 100, 125, 1080, 35, 20);
         displayedSeats = roster();
         foreach (var seat in displayedSeats)
         {
             var y = 175 + (seat.Seat - 1) * 65;
             view.Text($"{seat.Seat}. {seat.Name}", 80, y, 550, 55, 23);
-            view.Text(seat.State + (seat.Ready && seat.State == "Connected" ? " · Ready" : ""), 640, y, 290, 55, 21);
+            view.Text(seat.State, 640, y, 290, 55, 21);
             if (release is not null && seat.Seat != 1 && seat.State is "Disconnected" or "Waiting")
                 view.Button("Reassign", 955, y, 245, 50, () => ConfirmRelease(seat.Seat));
         }
         var self = client.Lobby.FirstOrDefault(seat => seat.Seat == client.Seat);
         if (!client.GameOver && self?.State != "Resigned")
         {
-            view.Button(self?.Ready == true ? "Not ready" : "I'm ready", 90, 600, 320, 55, () => client.Ready(self?.Ready != true));
             view.Button("Resign", 460, 600, 320, 55, () => Confirm("Resign from this match?",
                 "Root's AI will take over your faction. This cannot be undone. You can stay to watch the match.", client.Resign));
         }

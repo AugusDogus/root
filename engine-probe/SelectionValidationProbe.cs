@@ -125,6 +125,43 @@ internal static class SelectionValidationProbe
             }
         }
         catch (Exception error) { failures.Add(error.ToString()); log.LogError($"SELECTION TEST FAILED: {error}"); }
+        try
+        {
+            foreach (var choice in new int?[] { null, 0, 2 })
+            {
+                var nativeChoice = new dwd.core.match.messages.outgoing.GameCustomChoice(new GameID(Guid.NewGuid().ToString()),
+                    choice is int value ? new Il2CppSystem.Nullable<int>(value) : new Il2CppSystem.Nullable<int>(), 42);
+                results.Add(new { customChoice = Canis.json.JSON.ToJSON(nativeChoice, false) });
+                JsonElement sent = default;
+                var client = new PrivateClient("test-token", request =>
+                {
+                    sent = JsonSerializer.SerializeToElement(request);
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new { ok = true }));
+                });
+                PrivateClient.SendChoice(nativeChoice);
+                client.Update(0);
+                if (client.Notice is not null || sent.GetProperty("op").GetString() != "custom" ||
+                    sent.GetProperty("counter").GetInt32() != 42 || sent.GetProperty("choice").Deserialize<int?>() != choice)
+                    failures.Add($"Native custom choice {choice?.ToString() ?? "decline"} was not forwarded correctly");
+                client.Stop();
+            }
+        }
+        catch (Exception error) { failures.Add(error.ToString()); log.LogError($"CUSTOM CHOICE TEST FAILED: {error}"); }
+        try
+        {
+            JsonElement sent = default;
+            var client = new PrivateClient("test-token", request =>
+            {
+                sent = JsonSerializer.SerializeToElement(request);
+                return Task.FromResult(JsonSerializer.SerializeToElement(new { ok = true }));
+            });
+            PrivateClient.SendChoice(new zen.src.matchMaking.messages.ResignPBMGame(new GameID(Guid.NewGuid().ToString())));
+            client.Update(0);
+            if (client.Notice is not null || sent.GetProperty("op").GetString() != "resign")
+                failures.Add("The native resignation was not forwarded to the private host");
+            client.Stop();
+        }
+        catch (Exception error) { failures.Add(error.ToString()); log.LogError($"RESIGNATION TEST FAILED: {error}"); }
         File.WriteAllText(Path.Combine(output, "native-results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(Path.Combine(output, "test-results.json"), JsonSerializer.Serialize(new { status = failures.Count == 0 ? "passed" : "failed", failures }));
         UnityEngine.Application.Quit(failures.Count == 0 ? 0 : 1);

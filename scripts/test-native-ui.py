@@ -23,7 +23,7 @@ spec.loader.exec_module(menu_test)
 
 
 @contextmanager
-def fixture_save(lab, source):
+def fixture_save(lab, source, untimed=False):
     if source is None:
         yield
         return
@@ -32,6 +32,12 @@ def fixture_save(lab, source):
         with source.open('rb') as checkpoint, tempfile.NamedTemporaryFile(prefix='zz_ui_audit_', suffix='.json', dir=lab / 'saves', delete=False) as output:
             target = Path(output.name)
             shutil.copyfileobj(checkpoint, output)
+        if untimed:
+            # A historical reproduction must not time out while its board loads.
+            document = json.loads(target.read_text())
+            document['Timers'] = []
+            document['Initialization']['options']['Timers'] = '0'
+            target.write_text(json.dumps(document))
         yield
     finally:
         if target is not None:
@@ -45,7 +51,10 @@ def main():
     parser.add_argument("--full-hd", action="store_true", help="Check 1920x1080 instead of repeating the smaller resolutions")
     parser.add_argument('--fixture', type=Path, help='Resume a copied graphical-test checkpoint; preserve the source')
     parser.add_argument('--trading', action='store_true', help='Check the native Riverfolk price controls without submitting moves')
+    parser.add_argument('--explore-item', action='store_true', help='Resume an Explore checkpoint and take an item through the native prompt')
     args = parser.parse_args()
+    if args.explore_item and args.fixture is None:
+        parser.error('--explore-item requires --fixture so the test plays a disposable copy')
     os.umask(0o077)
     diagnostics = Diagnostics.from_environment()
     lab = PROJECT / '.lab/native-session-probe'
@@ -54,7 +63,7 @@ def main():
     for name in ('ui-audit-command.json', 'ui-audit-state.json', 'owned-content.fixture', 'fixture-ownership-active', 'view.txt', 'command.txt', 'error.txt', 'blocked-online-flow.txt'):
         (output / name).unlink(missing_ok=True)
     evidence = []
-    with fixture_save(lab, args.fixture), online_session(lab) as session:
+    with fixture_save(lab, args.fixture, untimed=args.explore_item), online_session(lab) as session:
         launched_at = time.time()
         session.perform('play', {})
 
@@ -121,11 +130,11 @@ def main():
 
         def toolbar_visible():
             buttons = state().get('toolbar', [])
-            return len(buttons) == 2 and all(button['active'] and button['bounds']['reachable'] for button in buttons)
+            return len(buttons) == 1 and all(button['active'] and button['bounds']['reachable'] for button in buttons)
 
         def toolbar_hidden():
             buttons = state().get('toolbar', [])
-            return len(buttons) == 2 and all(not button['active'] for button in buttons)
+            return len(buttons) == 1 and all(not button['active'] for button in buttons)
 
         # Exercise the normal private setup entry, not a test-only content hook.
         click(180, 415)
@@ -139,9 +148,38 @@ def main():
         click(180, 580)
         wait('saved matches', lambda: screen('saves'))
         click(620, 220)
-        wait('resumed board', lambda: screen('playing'))
+        wait('resumed board', lambda: (lab / 'client/native-menu-screen').read_text() == 'playing' and
+             any(panel['count'] == 6 for panel in state().get('panels', [])))
         session.assert_launcher_exited()
         command('capture')
+        if args.explore_item:
+            from network import exchange
+            endpoint = session.endpoint
+            def poll():
+                return json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': endpoint['tokens'][0]}).encode()))
+            def explore_pending(response):
+                return any(message.get('value', {}).get('msg', {}).get('value', {}).get('targetType') == 'ExploreItemChoice'
+                           for message in response['messages'])
+            before = poll()
+            assert explore_pending(before), 'Fixture has no pending Explore choice for the host'
+            atomic_json(diagnostics.directory / 'explore-snapshot.json', before)
+            wait('native Explore item prompt', lambda: state().get('itemSelection'), 30)
+            capture('explore-items', state()['width'], state()['height'])
+            items = state()['itemSelection']
+            assert items['choices'] == 2 and items['views'] == 2, items
+            command('take-first-item')
+            wait('Explore choice accepted by host', lambda: not explore_pending(poll()), 30)
+            wait('Explore prompt closed', lambda: state().get('itemSelection') is None, 30)
+            capture('explore-complete', state()['width'], state()['height'])
+            wait('Match control visible after Explore', toolbar_visible, 30)
+            button = state()['toolbar'][0]['bounds']
+            click(button['x'], button['y'])
+            wait('Match menu after Explore', lambda: screen('match'), 30)
+            assert not {'I\'m ready', 'Not ready', 'Invite friends'} & set(state()['matchControls'])
+            capture('explore-match-menu', state()['width'], state()['height'])
+            command('back-to-board')
+            print('Native Explore displayed both items and the host accepted the choice.', flush=True)
+            return
         wait('six player panels', lambda: any(p['count'] == 6 for p in state().get('panels', [])), 30)
         assert any(p['count'] == 6 and all(view['active'] for view in p['views']) for p in state()['panels'])
         cases = [(1920, 1080)] if args.full_hd else [(1280, 800), (1280, 720)]
@@ -205,22 +243,21 @@ def main():
                 command('prices-close')
                 wait('Riverfolk prices resolved', lambda: state().get('pricesResolved') and state().get('prices') is None, 30)
                 wait('toolbar restored after prices', toolbar_visible, 30)
-            # Exercise both relocated controls and their return path with real clicks.
-            for title, destination in [('Invite friends', 'seats'), ('Match', 'match')]:
-                button = next(button['bounds'] for button in state()['toolbar'] if button['name'] == title)
-                click(button['x'], button['y'])
-                wait(destination, lambda: screen(destination), 30)
-                if destination == 'match':
-                    wait('diagnostics button reachable', lambda: (state().get('diagnosticsButton') or {}).get('reachable'), 30)
-                    copied = lab / 'client/diagnostics-copy-verified'
-                    copied.unlink(missing_ok=True)
-                    button = state()['diagnosticsButton']
-                    click(button['x'], button['y'])
-                    wait('safe diagnostics copied', lambda: copied.exists() and copied.read_text() == 'True', 30)
-                    capture(f'diagnostics-{tag}', width, height)
-                # Invoke the current menu's actual back-button listener.
-                command('back-to-board')
-                wait('toolbar return path', lambda: screen('playing') and toolbar_visible(), 30)
+            # Exercise the match control and its return path with real clicks.
+            button = next(button['bounds'] for button in state()['toolbar'] if button['name'] == 'Match')
+            click(button['x'], button['y'])
+            wait('match', lambda: screen('match'), 30)
+            assert not {"I'm ready", 'Not ready', 'Invite friends'} & set(state()['matchControls'])
+            wait('diagnostics button reachable', lambda: (state().get('diagnosticsButton') or {}).get('reachable'), 30)
+            copied = lab / 'client/diagnostics-copy-verified'
+            copied.unlink(missing_ok=True)
+            button = state()['diagnosticsButton']
+            click(button['x'], button['y'])
+            wait('safe diagnostics copied', lambda: copied.exists() and copied.read_text() == 'True', 30)
+            capture(f'diagnostics-{tag}', width, height)
+            # Invoke the current menu's actual back-button listener.
+            command('back-to-board')
+            wait('toolbar return path', lambda: screen('playing') and toolbar_visible(), 30)
             evidence.append({'width': width, 'height': height, 'platform': state()['platform'], 'infoPages': sorted(seen), 'reachableChoices': 6})
         session.stop()
     result = {'status': 'passed', 'resolutions': evidence, 'syntheticSelectionPresentation': True,

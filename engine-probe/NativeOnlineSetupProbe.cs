@@ -72,6 +72,14 @@ public sealed class NativeOnlineSetupProbe : MonoBehaviour
         {
             NativeCommunicationProbe.Update(Output);
             NativeUiAuditProbe.Update(Output);
+            File.WriteAllText(Path.Combine(Output, "scene-state.json"), System.Text.Json.JsonSerializer.Serialize(
+                Object.FindObjectsOfType<ConfigureGamePlayerSlot>().Select(figure => new
+                {
+                    figure.name,
+                    models = figure.GetComponentsInChildren<dwd.core.prefabs.implementations.byflavor.PrefabByFlavorMetadata>()
+                        .Where(model => model.GetComponentsInChildren<Renderer>().Any(renderer => renderer.isVisible))
+                        .Select(model => model.name).ToArray()
+                }).ToArray()));
             if (flow is null && Environment.GetEnvironmentVariable("ROOT_LAB_MODE") == "online-setup-probe")
             {
                 if (Object.FindObjectOfType<LandingPromptBehaviour>() == null) return;
@@ -106,7 +114,6 @@ public sealed class NativeOnlineSetupProbe : MonoBehaviour
                 if (File.Exists(commandFile))
                 {
                     var command = File.ReadAllText(commandFile).Trim();
-                    File.Delete(commandFile);
                     if (command.StartsWith("{", StringComparison.Ordinal))
                     {
                         using var settings = System.Text.Json.JsonDocument.Parse(command);
@@ -136,6 +143,9 @@ public sealed class NativeOnlineSetupProbe : MonoBehaviour
                     if (command == "confirm-settings") Object.FindObjectOfType<ConfigureGameDetailsPromptBehaviour>()?.Confirm();
                     if (command == "create") view.Event_CreateGame();
                     if (command == "back") view.Event_Back();
+                    if (command == "reset") view.Event_ResetToDefault();
+                    // Deletion acknowledges completion, not merely receipt.
+                    File.Delete(commandFile);
                 }
             }
             if (Object.FindObjectOfType<ConfigureGameDetailsPromptBehaviour>() is { } settingsView)

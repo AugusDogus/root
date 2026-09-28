@@ -12,7 +12,7 @@ using Object = UnityEngine.Object;
 
 namespace RootEngineProbe;
 
-// Development-only presentation fixtures. Never submits moves or records hands.
+// Development-only presentation probes for the isolated test client.
 internal static class NativeUiAuditProbe
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -45,11 +45,21 @@ internal static class NativeUiAuditProbe
         var info = Object.FindObjectOfType<PlayerInformationPromptBehaviour>();
         var selector = Object.FindObjectOfType<SelectAPlayerPromptBehaviour>();
         var prices = Object.FindObjectOfType<Lib.src.match.prompt.behaviours.RiverfolkSetPricesPromptBehaviour>();
+        var items = Object.FindObjectOfType<tuber.client.match.prompt.behaviours.VagabondItemSelectPromptBehaviour>();
         var snapshot = new
         {
             sequence, error, frame = Time.renderedFrameCount, width = Screen.width, height = Screen.height,
             platform = dwd.core.platformdependent.PlatformUtil.CurrentPlatformAsString,
             toolbar = Toolbar(),
+            matchControls = GameObject.Find("Root Six Player Menu")?.GetComponentsInChildren<Button>()
+                .Select(button => button.name).ToArray(),
+            itemSelection = items == null ? null : new
+            {
+                choices = items.Prompt.Choices.Count,
+                views = items.views.Count,
+                entities = Enumerable.Range(0, items.Prompt.Choices.Count).Select(index => items.Prompt.Choices[index].EntityID.ToString()).ToArray(),
+                commit = Button(items.commitButton)
+            },
             prices = prices == null ? null : new
             {
                 rows = new[] { prices.handCardToggles, prices.riverboatsToggles, prices.mercenariesToggles }
@@ -93,6 +103,12 @@ internal static class NativeUiAuditProbe
     {
         switch (command.GetProperty("op").GetString())
         {
+            case "take-first-item":
+                var items = Object.FindObjectOfType<tuber.client.match.prompt.behaviours.VagabondItemSelectPromptBehaviour>()
+                    ?? throw new InvalidOperationException("No item selection is open.");
+                items.Prompt.SetSelected(items.Prompt.Choices[0].EntityID, true);
+                items.Event_CommitSelection();
+                break;
             case "capture": break;
             case "back-to-board":
                 var menu = GameObject.Find("Root Six Player Menu");

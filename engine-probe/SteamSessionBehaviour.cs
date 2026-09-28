@@ -65,10 +65,18 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
                 if (!returning.IsCompleted) return;
                 returningHome = null;
                 returning.GetAwaiter().GetResult();
-                leavingMatch = UnityEngine.Object.FindObjectOfType<tuber.client.match.behaviours.TuberEntitiesProvider>() != null
-                    ? new tuber.client.match.commands.TuberExitMatch(false)
-                    : new TuberChangeScene(TuberChangeScene.Landing, true);
-                dwd.core.commands.CommandExecutor.Get().Execute(leavingMatch);
+                if (UnityEngine.Object.FindObjectOfType<tuber.client.match.behaviours.TuberEntitiesProvider>() != null)
+                {
+                    leavingMatch = new tuber.client.match.commands.TuberExitMatch(false);
+                    dwd.core.commands.CommandExecutor.Get().Execute(leavingMatch);
+                }
+                else
+                {
+                    // Landing is a prompt, not an addressable scene key.
+                    // Let its native display command load the menu backdrop.
+                    menu?.ShowLanding();
+                    Status("menu");
+                }
             }
             if (leavingMatch is { } leaving)
             {

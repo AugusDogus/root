@@ -34,6 +34,7 @@ internal static class MatchCheckpoint
         {
             host.Chat.Restore(document.Chat ?? Array.Empty<ChatEntry>());
             RestoreOwners(host, init.gameState.Entities);
+            NativePrivateVisibility.RestoreExploredRuins(host.Match);
             host.Timers.Restore(host, document.Timers ?? Array.Empty<SavedTurnTimer>());
             host.RestoreCompletionMessages(document.CompletionMessages);
             for (var seat = 0; seat < host.PlayerCount; seat++)

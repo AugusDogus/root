@@ -65,6 +65,9 @@ def main():
                 click(round(x * screen['width'] / 1280 + int(fields['X'])),
                       round(y * screen['height'] / 800 + int(fields['Y'])))
             def capture(name):
+                frame = native_state('communication-state.json')['renderedFrame']
+                wait(lambda: native_state('communication-state.json').get('renderedFrame', 0) >= frame + 3,
+                     30, name='render ' + name)
                 subprocess.run(['import', '-window', 'root', str(PROJECT / 'results' / name)], env=env, check=True, timeout=15)
                 if diagnostics.directory is not None:
                     shutil.copy2(PROJECT / 'results' / name, diagnostics.directory / name)
@@ -77,10 +80,19 @@ def main():
                 except (FileNotFoundError, json.JSONDecodeError):
                     return {}
             def command(value):
-                (output / 'command.txt').write_text(value)
+                temporary = output / 'command.tmp'
+                temporary.write_text(value)
+                temporary.replace(output / 'command.txt')
                 wait(lambda: not (output / 'command.txt').exists(), 30)
-            click(180, 425)
+            click_client(180, 425)
             wait(lambda: (output / 'view.txt').exists(), name='open six-seat setup')
+            if '--navigation-only' in sys.argv:
+                command('reset')
+                time.sleep(2)  # Let native reset subscriptions and model destruction settle.
+                wait(lambda: len(native_state('scene-state.json')) == 6 and
+                     all(len(figure['models']) == 1 for figure in native_state('scene-state.json')),
+                     30, name='six single character models in default setup')
+                capture('online-default-setup.png')
             command(json.dumps({'factions': factions, 'controllers': controllers,
                                 'options': {'AdvancedSetup': 0, 'EnableBluff': 1, 'AILevel': 1, 'PreferLiveGame': 1, 'ChosenMap': 2 if dlc else 0, 'DeckChoice': 1 if dlc else 0}}))
             command('cycle-second-seat')
@@ -94,10 +106,10 @@ def main():
             capture('online-private-settings.png')
             command('confirm-settings')
             time.sleep(1)
-            click(1090, 765)  # Use the visible native Create Game button.
+            click_client(1090, 765)  # Use the visible native Create Game button.
             if dlc:
                 wait(lambda: (output / 'coop-ready').exists(), 30)
-                click(755, 615)  # Confirm Root's Clockwork co-op choice.
+                click_client(755, 615)  # Confirm Root's Clockwork co-op choice.
             print('Native setup created. Waiting for private authority.', flush=True)
             wait(lambda: session.endpoint is not None and (output / 'lobby-view.txt').exists(), name='create private waiting room')
             assert (output / 'lobby-view.txt').read_text().startswith('Slots: 6')
@@ -110,6 +122,42 @@ def main():
             assert host['setup']['EnableBluff'] is True
             assert host['setup']['AI'] == expected_ai
             assert request(0, 'lobby-start')['error'] == 'PlayersMissing'
+            if '--navigation-only' in sys.argv:
+                wait(lambda: len(native_state('scene-state.json')) == 6 and
+                     all(len(figure['models']) == 1 for figure in native_state('scene-state.json')),
+                     30, name='six single character models in lobby')
+                capture('online-lobby-before-back.png')
+                click_client(160, 765)
+                wait(lambda: (lab / 'client/native-menu-interactive').read_text() == 'home',
+                     30, name='lobby Back returns to an interactive menu')
+                assert session.endpoint is None, 'Leaving the lobby must stop its private host'
+                for name in ('view.txt', 'visual.json', 'lobby-view.txt'):
+                    (output / name).unlink(missing_ok=True)
+                click_client(180, 425)
+                wait(lambda: native_state('visual.json').get('visibleFigures') == 6,
+                     30, name='reopen six-seat setup after leaving lobby')
+                command(json.dumps({'controllers': [0, 1, 1, 1, 1, 1], 'factions': [0, 1, 2, 3, 6, 7]}))
+                capture('online-setup-after-back.png')
+                click_client(1090, 765)
+                wait(lambda: session.endpoint is not None and (output / 'lobby-view.txt').exists(),
+                     30, name='create replacement lobby with AI seats')
+                endpoint = session.endpoint
+                def replacement_ready():
+                    response = request(0, 'poll', after=0)
+                    if response.get('error') == 'NotInLobby':
+                        return False  # Authority is ready before the native host joins.
+                    assert response['ok'], response.get('error')
+                    return response
+                replacement = wait(replacement_ready, 30, name='host joins replacement lobby')
+                assert replacement['setup']['AI'] == [None, 1, 1, 1, 1, 1]
+                assert (output / 'lobby-view.txt').read_text().startswith('Slots: 6')
+                wait(lambda: len(native_state('scene-state.json')) == 6 and
+                     all(len(figure['models']) == 1 for figure in native_state('scene-state.json')) and
+                     sum('_AI' in model for figure in native_state('scene-state.json') for model in figure['models']) == 5,
+                     30, name='six single character models in replacement lobby')
+                capture('online-lobby-after-back.png')
+                print('Lobby Back, six-seat setup, and replacement AI lobby passed.', flush=True)
+                return
             guest = request(1, 'join', name='Local friend fixture')
             assert guest['phase'] == 'lobby' and guest['account'] != host['account']
             assert request(1, 'lobby-start')['error'] == 'HostOnly'

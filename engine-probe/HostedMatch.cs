@@ -140,6 +140,7 @@ internal sealed class HostedMatch
         // private connection available for watching or returning to the menu.
         Match.SetRemoveIdlePlayer(new Func<AccountID, Il2CppSystem.Threading.Tasks.Task>(_ => Il2CppSystem.Threading.Tasks.Task.CompletedTask));
         Match.messageActionFactory = new ObfuscatedMessageActionFactory().Cast<IMessageActionFactory>();
+        NativePrivateVisibility.Install();
         Match.Start();
         started = true;
         // Native setup supplies stable seats before factions are drafted.

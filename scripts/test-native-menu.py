@@ -163,15 +163,6 @@ def main():
             # "playing" is published only after Root's loading curtain closes.
             capture('native-menu-host.png')
             click(1180, 125)
-            screen('seats')
-            capture('native-menu-invite.png')
-            click(640, 250)
-            screen('friends')
-            click(640, 720)
-            screen('seats')
-            click(640, 720)
-            screen('playing')
-            click(1180, 177)
             screen('match')
             capture('native-menu-table.png')
             if ai:
@@ -180,13 +171,6 @@ def main():
                 reply = json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': endpoint['tokens'][0]}).encode()))
                 assert [seat['State'] for seat in reply['lobby'][2:]] == ['AI · Medium'] * 4
                 capture('native-menu-ai-table.png')
-            click(240, 650)
-            def ready():
-                from network import exchange
-                endpoint = session.endpoint
-                reply = json.loads(exchange(endpoint['port'], json.dumps({'op': 'join', 'token': endpoint['tokens'][0]}).encode()))
-                return reply['lobby'][0]['Ready']
-            wait_for(ready)
             click(1020, 650)
             screen('confirm')
             click(850, 590)
@@ -206,9 +190,9 @@ def main():
                 time.sleep(20)
                 capture('native-menu-results.png')
             result = {'status': 'passed', 'nativeMenu': True, 'hostFromGame': True,
-                      'gameProcessReused': True, 'sixNativePlayers': True, 'friendPickerOpened': True, 'steamInvitationsAvailable': 1 if ai else 4 if dlc else 5,
+                      'gameProcessReused': True, 'sixNativePlayers': True, 'steamInvitationsAvailable': 1 if ai else 4 if dlc else 5,
                       'invitationsSent': 0, 'browserOpened': False, 'headless': True,
-                      'readiness': True, 'returnToMenu': True, 'savedMatchPreserved': True}
+                      'returnToMenu': True, 'savedMatchPreserved': True}
             result['completedMatchScreen'] = completed is not None
             if dlc or ai:
                 result.update(actual)

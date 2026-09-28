@@ -348,7 +348,7 @@ internal sealed class PrivateClient
         Log.LogInfo("Native match relay connected to the private host");
     }
 
-    private static bool SendChoice(Il2CppSystem.Object __0)
+    internal static bool SendChoice(Il2CppSystem.Object __0)
     {
         if (Active is not { } client) return false;
         // Root requests chat history automatically when opening the board.
@@ -387,22 +387,20 @@ internal sealed class PrivateClient
                 source = selectedTarget.entityID.ToString(), targets = choices.Select(choice => choice.ToWire()).ToArray() });
             Log.LogInfo($"Sending native selection {selection.counter} to the private host");
         }
-        else
+        else if (__0.TryCast<dwd.core.match.messages.outgoing.GameCustomChoice>() is { } custom)
         {
-            using var document = JsonDocument.Parse(JSON.ToJSON(__0, false));
-            var root = document.RootElement;
-            if (root.TryGetProperty("name", out var name) && name.GetString() == "GameCustomChoice" &&
-                root.TryGetProperty("value", out var value) && value.TryGetProperty("counter", out var counter) &&
-                counter.TryGetInt32(out var counterNumber) && value.TryGetProperty("selection", out var selected) &&
-                selected.ValueKind is JsonValueKind.Number or JsonValueKind.Null)
-            {
-                int? choice = selected.ValueKind == JsonValueKind.Null ? null : selected.GetInt32();
-                client.outgoing.Enqueue(new { op = "custom", client.token, counter = counterNumber, choice });
-                Log.LogInfo($"Sending native custom choice {counterNumber} to the private host");
-            }
-            else
-                client.Unsupported(__0.GetIl2CppType().FullName);
+            // Root omits Selection when declining. Its generated nullable
+            // getter also cannot wrap that null IL2CPP value, so use the native
+            // serializer for this field while matching the actual message type.
+            using var document = JsonDocument.Parse(JSON.ToJSON(custom, false));
+            int? choice = document.RootElement.GetProperty("value").TryGetProperty("selection", out var selected)
+                && selected.ValueKind != JsonValueKind.Null ? selected.GetInt32() : null;
+            client.outgoing.Enqueue(new { op = "custom", client.token, counter = custom.Counter, choice });
+            Log.LogInfo($"Sending native custom choice {custom.Counter} to the private host");
         }
+        else if (__0.TryCast<zen.src.matchMaking.messages.ResignPBMGame>() is not null)
+            client.Resign();
+        else client.Unsupported(__0.GetIl2CppType().FullName);
         return false;
     }
 

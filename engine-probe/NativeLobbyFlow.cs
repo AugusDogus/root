@@ -26,7 +26,6 @@ internal sealed class NativeLobbyFlow : IDisposable
     private readonly Action<GameObject> attachChat;
     private WaitingForPlayersPrompt? prompt;
     private DisplayTuberPrompt? command;
-    private NativeSetupScene? scene;
     private GameID? gameId;
     private TuberLobbyGameProvider? provider;
     private bool host;
@@ -76,8 +75,6 @@ internal sealed class NativeLobbyFlow : IDisposable
     {
         RejectJoin();
         prompt?.Dismiss();
-        scene?.Dispose();
-        scene = null;
         if (provider != null && gameId is not null) provider.writableAll.Remove(gameId);
         if (active == this) active = null;
         NativeLobbyData.UseIdentity(null);
@@ -121,7 +118,7 @@ internal sealed class NativeLobbyFlow : IDisposable
     private static void ExtendScene(ConfigureGameScenePromptBehaviour __instance)
     {
         if (active?.prompt is not { } prompt || __instance.Prompt.Pointer != prompt.Pointer) return;
-        active.scene ??= new NativeSetupScene(__instance);
+        NativeSetupScene.Extend(__instance);
     }
     private static void ExtendView(WaitingForPlayersPromptBehaviour __instance)
     {

@@ -11,7 +11,14 @@ internal static class RecoveryProbe
         Directory.CreateDirectory(output);
         try
         {
+            if (Environment.GetEnvironmentVariable("ROOT_LAB_RECOVERY_FIXTURE") is { } fixture)
+            {
+                ExploreRecoveryProbe.Run(fixture, output);
+                UnityEngine.Application.Quit();
+                return;
+            }
             var host = new HostedMatch(true);
+            if (!host.Match.IsObfuscated()) throw new InvalidOperationException("The private authority disabled native reveal actions.");
             var offer = host.GetOffer(0) ?? throw new InvalidOperationException("Missing setup offer");
             if (host.Choose(0, offer.Counter, offer.Source, offer.Targets[0]) != ChoiceResult.Accepted)
                 throw new InvalidOperationException("Initial placement failed");
@@ -29,6 +36,8 @@ internal static class RecoveryProbe
         {
             log.LogError(error);
             File.WriteAllText(Path.Combine(output, "test-results.json"), JsonSerializer.Serialize(new { status = "failed", error = error.ToString() }));
+            UnityEngine.Application.Quit(1);
+            return;
         }
         UnityEngine.Application.Quit();
     }

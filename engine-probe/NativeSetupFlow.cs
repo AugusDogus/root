@@ -23,7 +23,6 @@ internal sealed class NativeSetupFlow
     private readonly Action cancelled;
     private RunConfigureOfflineMatchFlow? command;
     private SerializedMatchComponent? data;
-    private NativeSetupScene? scene;
     private TMPro.TMP_Text? title;
     private ConfigureOfflineGamePromptBehaviour? view;
 
@@ -63,8 +62,6 @@ internal sealed class NativeSetupFlow
         if (title != null && title.text != "Six Player") title.text = "Six Player";
         if (command is not { Completed: true } completed) return;
         command = null;
-        scene?.Dispose();
-        scene = null;
         title = null;
         view = null;
         active = null;
@@ -88,9 +85,9 @@ internal sealed class NativeSetupFlow
 
     private static void ExtendScene(ConfigureGameScenePromptBehaviour __instance)
     {
-        if (__instance.Prompt.TryCast<ConfigureOfflineGamePrompt>() is not { } prompt || !Owns(prompt) || active is not { } flow) return;
+        if (__instance.Prompt.TryCast<ConfigureOfflineGamePrompt>() is not { } prompt || !Owns(prompt)) return;
         ExtendModel(prompt);
-        flow.scene ??= new NativeSetupScene(__instance);
+        NativeSetupScene.Extend(__instance);
     }
 
     private static void ExtendModel(ConfigureOfflineGamePrompt __instance)

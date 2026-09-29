@@ -10,7 +10,7 @@ A mod and launcher for private six-player games of [Root](https://store.steampow
 
 | System | Download and run |
 | --- | --- |
-| Windows | Open `RootSixPlayer.exe` |
+| Windows | Run `RootSixPlayer-…-Setup.exe`, then open **Root Six Player** from the Start menu |
 | Linux | Download `RootSixPlayer-…-x86_64.AppImage`, allow it to run as a program in file properties, then open it |
 
 The launcher finds Root, sets up a separate modded copy, and opens the game. First launch can take a few minutes. Everyone in a match should use the same release.
@@ -51,9 +51,9 @@ Matches save automatically. To continue later, the host chooses **Resume a game*
 
 ## Updates and troubleshooting
 
-The launcher checks for updates when opened. On Linux, it replaces the AppImage in place and restarts. Keep it in a writable folder and use the same file each time. Updates preserve compatible saved matches. Close Root before updating.
+The launcher checks for updates when opened. On Windows, it updates the installed launcher and restarts. On Linux, it replaces the AppImage in place and restarts. Keep it in a writable folder and use the same file each time. Updates preserve compatible saved matches. Close Root before updating.
 
-Linux users upgrading from 0.7.4 or earlier need to download the AppImage once.
+Windows users upgrading from 0.7.5 or earlier need to run Setup once. Linux users upgrading from 0.7.4 or earlier need to download the AppImage once.
 
 If Linux reports that FUSE is unavailable, run the AppImage with `--appimage-extract-and-run`.
 

@@ -19,7 +19,7 @@ python3 scripts/safe-test.py bash scripts/build-probe.sh
 python3 scripts/safe-test.py python3 scripts/package-launcher.py
 ```
 
-Building the current source produces a Windows EXE (also available in a ZIP) and a Linux AppImage. Each contains the native Go launcher, with BepInEx, its .NET runtime, matching Unity base libraries, the mod, and third-party notices embedded. Windows opens **Root Six Player.exe**; Linux opens **RootSixPlayer-0.7.5-x86_64.AppImage**. The launcher discovers Root in Steam, prepares two isolated copies automatically, generates bindings sequentially, opens Root's native menu, and exits. The mod manages the rules host, saved matches, and returning to the menu within the running game. There is no game selector, browser interface, or dependency download during player setup. Steam and Root must already be installed; Linux also needs Steam's Proton Experimental and Steam Linux Runtime 4.
+Building the current source produces a per-user Windows NSIS installer and a Linux AppImage. Each contains the native Go launcher, with BepInEx, its .NET runtime, matching Unity base libraries, the mod, and third-party notices embedded. Windows runs **Setup** once, then opens **Root Six Player** from the Start menu; Linux opens **RootSixPlayer-0.7.5-x86_64.AppImage**. The launcher discovers Root in Steam, prepares two isolated copies automatically, generates bindings sequentially, opens Root's native menu, and exits. The mod manages the rules host, saved matches, and returning to the menu within the running game. There is no game selector, browser interface, or dependency download during player setup. Steam and Root must already be installed; Linux also needs Steam's Proton Experimental and Steam Linux Runtime 4.
 
 The launcher reuses the existing data folder and compatible saved matches when upgrading from the Python launcher. It refuses to overwrite an unknown modified mod file. Friends open **Join friends** before accepting an invite; Steam opens ordinary Root if the mod is closed. Python launcher modules remain solely as development adapters for older engine probes.
 
@@ -243,8 +243,24 @@ inherited AppImage environment variables. A failed download or staging operation
 preserves the old image. Linux has no extracted-executable update cache or ZIP
 fallback. Standalone users must switch to the AppImage manually.
 
-Windows retains a versioned executable cache because the running EXE is locked.
+Windows downloads the verified NSIS installer and hands off after closing its window and releasing the data lock. Setup waits up to 30 seconds for the parent process, replaces the launcher, and restarts it. It never terminates processes. Executable caches and standalone Windows release assets are no longer used.
 Test whole-image replacement with `ROOT_APPIMAGE_TEST=/absolute/path/to.AppImage`
 and `go -C launcher-native test -run TestPackagedAppImageReplacement` under the
 normal test budget. `scripts/test-launcher-ui.py --appimage PATH` tests the
 packaged startup window on an isolated Xvfb display.
+
+
+## Windows installation
+
+Setup installs to `%LOCALAPPDATA%\Programs\Root Six Player`, creates a Start menu
+shortcut, and registers a per-user uninstaller. Game copies and saves remain in
+`%LOCALAPPDATA%\RootSixPlayer`. Uninstall removes only known launcher files,
+its shortcut, and its registration. It preserves player data and unrelated files
+in the installation folder.
+
+`scripts/windows_installer.py` builds with NSIS 3.08 and verifies the embedded
+launcher using 7-Zip. CI runs `scripts/test-windows-installer.ps1` on Windows to
+check the actual package, notices, shortcuts, registration, waiting for a running
+parent, replacement, restart, and uninstall. Harmless Go fixtures exercise
+updates without opening Root. `scripts/test-windows-exe.py` tests installing and
+exporting notices under isolated Proton locally.

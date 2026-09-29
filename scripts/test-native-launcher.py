@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import zipfile
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
@@ -15,6 +14,7 @@ from steam import VERSION
 from test_budget import require_test_budget
 from test_diagnostics import Diagnostics
 from appimage_package import appimage_name, validate_appimage
+from windows_installer import installer_name, validate_installer
 
 
 def main():
@@ -29,10 +29,7 @@ def main():
     with diagnostics.stage('native package integrity'):
         validate_appimage(executable)
         assert subprocess.check_output([*command, '--version'], text=True).strip() == VERSION
-        for platform, name in [('windows', 'Root Six Player.exe')]:
-            with zipfile.ZipFile(PROJECT / f'dist/root-six-player-{VERSION}-{platform}.zip') as archive:
-                assert archive.namelist() == [name]
-                assert archive.read(name) == (PROJECT / 'dist' / name).read_bytes()
+        validate_installer(PROJECT / "dist" / installer_name(VERSION))
         for line in (PROJECT / 'dist/SHA256SUMS').read_text().splitlines():
             expected, name = line.split('  ', 1)
             assert hashlib.sha256((PROJECT / 'dist' / name).read_bytes()).hexdigest() == expected

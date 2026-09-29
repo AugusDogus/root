@@ -5,8 +5,8 @@ from pathlib import Path
 import re
 import shutil
 import sys
-import zipfile
 from appimage_package import appimage_name, validate_appimage
+from windows_installer import installer_name, validate_installer
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
@@ -30,10 +30,10 @@ def validate_version(project, version, tag=None):
 
 
 def stage_release(dist, destination, version):
-    names = ['Root Six Player.exe', f'root-six-player-{version}-windows.zip', appimage_name(version)]
+    names = [installer_name(version), appimage_name(version)]
     lines = [line.split('  ', 1) for line in (dist / 'SHA256SUMS').read_text().splitlines()]
     if len(lines) != len(names) or any(len(line) != 2 for line in lines):
-        raise ValueError('Release checksums must describe exactly the three player assets.')
+        raise ValueError('Release checksums must describe exactly the two player assets.')
     expected = {name: checksum for checksum, name in lines}
     if set(expected) != set(names):
         raise ValueError('Release checksums do not match this version. Rebuild the packages.')
@@ -41,20 +41,14 @@ def stage_release(dist, destination, version):
         with (dist / name).open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != expected[name]:
                 raise ValueError(f'{name} changed after packaging. Rebuild before uploading.')
-    name, executable = names[1], names[0]
-    with zipfile.ZipFile(dist / name) as package:
-        if package.namelist() != [executable]:
-            raise ValueError(f'{name} must contain only {executable}.')
-        with package.open(executable) as stream, (dist / executable).open('rb') as binary:
-            if hashlib.file_digest(stream, 'sha256').digest() != hashlib.file_digest(binary, 'sha256').digest():
-                raise ValueError(f'{name} contains a different executable. Rebuild the packages.')
-    validate_appimage(dist / names[2])
+    validate_installer(dist / names[0])
+    validate_appimage(dist / names[1])
     destination.mkdir(parents=True, exist_ok=False)
     sums = []
     for name in names:
-        target = destination / ('RootSixPlayer.exe' if name == names[0] else name)
+        target = destination / name
         shutil.copyfile(dist / name, target)
-        if name == names[2]:
+        if name == names[1]:
             target.chmod(0o755)
         sums.append(f'{expected[name]}  {target.name}\n')
     (destination / 'SHA256SUMS').write_text(''.join(sums))

@@ -87,7 +87,7 @@ jobs:
       - name: Install SteamCMD dependencies and Windows icon compiler
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends lib32gcc-s1 bubblewrap binutils-mingw-w64-x86-64 desktop-file-utils
+          sudo apt-get install -y --no-install-recommends lib32gcc-s1 bubblewrap binutils-mingw-w64-x86-64 desktop-file-utils nsis p7zip-full
       - name: Download supported Root build
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
@@ -115,31 +115,30 @@ jobs:
           retention-days: 14
 
   windows-package:
-    name: Windows executable smoke test
+    name: Windows installer and update test
     needs: build
     runs-on: windows-2022
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Install NSIS for installer regression fixtures
+        run: choco install nsis --version=3.08 -y --no-progress --allow-downgrade
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: launcher-${{ github.sha }}
           path: packages
-      - name: Verify checksums and extract notices without Steam
+      - name: Test installation, updates, restart, and uninstall
         shell: pwsh
         run: |
-          foreach ($line in Get-Content packages/SHA256SUMS) {
-            $digest, $name = $line -split '  ', 2
-            if ((Get-FileHash -Algorithm SHA256 "packages/$name").Hash.ToLowerInvariant() -ne $digest) {
-              throw "Package checksum mismatch: $name"
-            }
-          }
-          $process = Start-Process -FilePath ./packages/RootSixPlayer.exe -ArgumentList '--headless', '--licenses', 'notices' -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Launcher exited with $($process.ExitCode)" }
-          foreach ($name in @('THIRD-PARTY-NOTICES.txt', 'dependency-sources.zip')) {
-            if (!(Test-Path "notices/$name") -or (Get-Item "notices/$name").Length -eq 0) {
-              throw "Missing bundled notices: $name"
-            }
-          }
+          $version = python scripts/launcher_release.py
+          if ($LASTEXITCODE -ne 0) { throw "Release metadata validation failed." }
+          ./scripts/test-windows-installer.ps1 -Packages packages -Version $version
 
   release:
     name: Publish playtest release

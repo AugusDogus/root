@@ -18,6 +18,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
 from test_budget import require_test_budget
 from appimage_package import build_appimage, check_appimage
+from windows_installer import build_installer, check_installer
 
 VERSION = '0.7.5'
 GAME_BUILD = '22238765'
@@ -157,10 +158,9 @@ def build(go):
                 resource.unlink(missing_ok=True)
         executables[platform] = target
     windows = executables['windows']
-    archive_path = WORK / f'root-six-player-{VERSION}-windows.zip'
-    with zipfile.ZipFile(archive_path, 'w') as archive:
-        add_file(archive, windows, windows.name)
-    outputs = [windows, archive_path]
+    installer = build_installer(PROJECT, WORK, windows, VERSION)
+    check_installer(installer, windows, sha256)
+    outputs = [installer]
     appimage = build_appimage(PROJECT, WORK, executables['linux'], VERSION, verified_archive)
     check_appimage(appimage, executables['linux'], VERSION, sha256)
     outputs.append(appimage)

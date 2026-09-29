@@ -13,6 +13,7 @@ import urllib.error
 from unittest.mock import Mock, patch
 import zipfile
 from appimage_package import appimage_name
+from windows_installer import installer_name
 
 import ci_generate_references as references
 import steam_ci
@@ -35,35 +36,35 @@ class ReleaseTests(unittest.TestCase):
         self.dist = self.root / 'dist'
         self.dist.mkdir()
         self.version = '1.2.3'
-        self.windows = 'root-six-player-1.2.3-windows.zip'
+        self.windows = installer_name(self.version)
         self.appimage = appimage_name(self.version)
         header = bytearray(64)
         header[:7] = b'\x7fELF\x02\x01\x01'
         header[8:11] = b'AI\x02'
         header[18:20] = b'\x3e\x00'
         (self.dist / self.appimage).write_bytes(header)
-        binary = 'Root Six Player.exe'
-        (self.dist / binary).write_bytes(b'executable fixture')
-        with zipfile.ZipFile(self.dist / self.windows, 'w') as output:
-            info = zipfile.ZipInfo(binary)
-            info.external_attr = 0o100755 << 16
-            output.writestr(info, (self.dist / binary).read_bytes())
+        installer = bytearray(128)
+        installer[:2] = b'MZ'
+        installer[60:64] = (64).to_bytes(4, 'little')
+        installer[64:68] = b'PE\0\0'
+        installer[80:96] = b'\xef\xbe\xad\xdeNullsoftInst'
+        (self.dist / self.windows).write_bytes(installer)
         self.checksums()
 
     def checksums(self):
-        names = ['Root Six Player.exe', self.windows, self.appimage]
+        names = [self.windows, self.appimage]
         (self.dist / 'SHA256SUMS').write_text(''.join(f'{digest(self.dist / name)}  {name}\n' for name in names))
 
     def test_download_names_match_checksums(self):
         target = self.root / 'assets'
         release.stage_release(self.dist, target, self.version)
-        self.assertEqual({p.name for p in target.iterdir()}, {'RootSixPlayer.exe', self.windows, self.appimage, 'SHA256SUMS'})
+        self.assertEqual({p.name for p in target.iterdir()}, {self.windows, self.appimage, 'SHA256SUMS'})
         for line in (target / 'SHA256SUMS').read_text().splitlines():
             checksum, name = line.split('  ', 1)
             self.assertEqual(digest(target / name), checksum)
 
     def test_changed_binary_rejected(self):
-        (self.dist / 'Root Six Player.exe').write_bytes(b'changed')
+        (self.dist / self.windows).write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError, 'changed after packaging'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
@@ -73,17 +74,18 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'type-2 AppImage'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
-    def test_extra_game_files_rejected_even_with_valid_checksums(self):
-        with zipfile.ZipFile(self.dist / self.windows, 'a') as output:
-            output.writestr('GameAssembly.dll', b'private')
+    def test_non_installer_rejected_even_with_valid_checksum(self):
+        (self.dist / self.windows).write_bytes(b'MZ standalone executable')
         self.checksums()
-        with self.assertRaisesRegex(ValueError, 'must contain only'):
+        with self.assertRaisesRegex(ValueError, 'installer'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
-    def test_old_binary_in_zip_rejected(self):
-        (self.dist / 'Root Six Player.exe').write_bytes(b'new binary')
-        self.checksums()
-        with self.assertRaisesRegex(ValueError, 'different executable'):
+    def test_legacy_executable_assets_rejected(self):
+        extra = self.dist / 'RootSixPlayer.exe'
+        extra.write_bytes(b'old executable')
+        with (self.dist / 'SHA256SUMS').open('a') as output:
+            output.write(f'{digest(extra)}  {extra.name}\n')
+        with self.assertRaisesRegex(ValueError, 'exactly the two'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
     def test_appimage_is_staged_as_executable(self):

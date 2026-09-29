@@ -19,6 +19,9 @@ dependency-sources.zip. These can be used to rebuild and replace the runtime
 with appimagetool's --runtime-file option. Packaging follows Compositor's
 pinned appimagetool 1.9.1 and runtime versions.
 
+Windows Setup uses NSIS 3.08 with its System and nsDialogs plugins. The NSIS
+license text follows below. Installer sources are in packaging/windows.
+
 Loader artifact:
 https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788%2B5b766a3.zip
 SHA-256: f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a

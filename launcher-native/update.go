@@ -18,15 +18,6 @@ type launcherHandoff struct{ executable string }
 
 func (handoff *launcherHandoff) Error() string { return "opening the updated launcher" }
 
-type cachedLauncher struct {
-	Version string `json:"version"`
-	SHA256  string `json:"sha256"`
-}
-
-func launcherUpdatePath(data, version string) string {
-	return filepath.Join(data, "launcher-updates", version, "RootSixPlayer.exe")
-}
-
 func launcherFileDigest(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -47,39 +38,7 @@ func launcherFileDigest(path string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-func cachedLauncherUpdate(data, current string) (string, error) {
-	var cached cachedLauncher
-	err := readJSON(filepath.Join(data, "launcher-updates", "current.json"), &cached)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	version, err := parseReleaseVersion(cached.Version)
-	if err != nil {
-		return "", err
-	}
-	running, err := parseReleaseVersion(current)
-	if err != nil {
-		return "", err
-	}
-	if !version.newerThan(running) {
-		return "", nil
-	}
-	path := launcherUpdatePath(data, cached.Version)
-	digest, err := launcherFileDigest(path)
-	if err != nil {
-		return "", err
-	}
-	if digest != cached.SHA256 {
-		return "", fmt.Errorf("cached launcher %s failed its checksum check", cached.Version)
-	}
-	return path, nil
-}
-
-// Linux replaces the running AppImage. Windows locks running EXEs, so it
-// stages the replacement in a versioned directory.
+// Linux replaces the AppImage; Windows hands off to the downloaded installer.
 func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current, platform string, progress func(string)) (string, error) {
 	release, err := latestLauncherRelease(ctx, client)
 	if err != nil {
@@ -97,7 +56,7 @@ func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current
 	if !next.newerThan(running) {
 		return "", nil
 	}
-	name := "RootSixPlayer.exe"
+	name := "RootSixPlayer-" + version + "-Setup.exe"
 	if platform == "linux" {
 		name = "RootSixPlayer-" + version + "-x86_64.AppImage"
 	} else if platform != "windows" {
@@ -160,18 +119,8 @@ func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current
 		}
 		return installed, nil
 	}
-	target := launcherUpdatePath(data, version)
-	executable := archive
-	if err := os.Chmod(executable, 0700); err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-		return "", err
-	}
-	if err := os.Rename(executable, target); err != nil {
-		return "", err
-	}
-	if err := writeJSON(filepath.Join(root, "current.json"), cachedLauncher{version, digest}); err != nil {
+	target := filepath.Join(root, "RootSixPlayerSetup.exe")
+	if err := os.Rename(archive, target); err != nil {
 		return "", err
 	}
 	return target, nil
@@ -185,15 +134,6 @@ func launcherUpdate(ctx context.Context, data string, progress func(string)) (st
 }
 
 func launcherUpdateWithClient(ctx context.Context, client *http.Client, data string, progress func(string)) (string, error) {
-	if runtime.GOOS == "windows" {
-		cached, err := cachedLauncherUpdate(data, Version)
-		if err != nil {
-			return "", fmt.Errorf("The saved launcher update could not be verified. Delete %s, then open a freshly downloaded launcher. Saved matches are outside that folder and are unchanged: %w", filepath.Join(data, "launcher-updates"), err)
-		}
-		if cached != "" {
-			return cached, nil
-		}
-	}
 	progress("Checking for updates...")
 	updated, err := fetchLauncherUpdate(ctx, client, data, Version, runtime.GOOS, progress)
 	if err != nil {

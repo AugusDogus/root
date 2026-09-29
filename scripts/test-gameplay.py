@@ -12,7 +12,7 @@ import tempfile
 from recovery_checks import crash_and_resume
 from selection_messages import latest_selection
 from test_client_support import exchange, stop
-from gameplay_driver import choose
+from gameplay_driver import choose, choose_undo
 from gameplay_checks import check_private_snapshots
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--steps', type=int, default=1500)
     parser.add_argument('--restart-at', type=int, help='Autosave, crash the native host at this decision, and resume')
     parser.add_argument('--resume-checkpoint', type=Path, help='Continue an existing test checkpoint')
+    parser.add_argument('--exercise-undo', action='store_true', help='Submit each offered Undo prompt once per seat, then continue to victory')
     args = parser.parse_args()
     output = PROJECT / ('.lab/results/recovery-gameplay' if args.restart_at is not None or args.resume_checkpoint else '.lab/results/gameplay')
     output.mkdir(parents=True, exist_ok=True)
@@ -33,6 +34,7 @@ def main():
     decisions = Counter()
     prompts = Counter()
     privacy_checks = []
+    undone_prompts = set()
     result = {'status': 'failed', 'seed': args.seed}
     (output / 'test-results.json').write_text(json.dumps({'status': 'running', 'seed': args.seed}) + '\n')
     started = time.time()
@@ -116,6 +118,8 @@ def main():
                         assert any(name.startswith('log.buy.service.') and count > 0 for name, count in log_counts.items()), \
                             'Native game log did not demonstrate a completed Riverfolk service purchase'
                     assert all(decisions[seat] > 0 for seat in range(1, 7))
+                    if args.exercise_undo:
+                        assert undone_prompts, 'Match completed without exercising an offered Undo action'
                     result['nativeLogCounts'] = dict(log_counts)
                     result['standings'] = [{key: player[key] for key in ['faction', 'score', 'didWin', 'wasDominanceWin']} for player in final_results[0]]
                     for token in endpoint['tokens']:
@@ -141,7 +145,11 @@ def main():
                 assert repeated < 20, f'Bot made no progress past {prompt} for 20 decisions'
                 trace.write(json.dumps({'step': step, 'seat': seat + 1, 'selection': selection}) + '\n')
                 trace.flush()
-                request = choose(selection, rng, undo_ids)
+                request = choose_undo(selection) if args.exercise_undo and prompt not in undone_prompts else None
+                if request is not None:
+                    undone_prompts.add(prompt)
+                else:
+                    request = choose(selection, rng, undo_ids)
                 reply = exchange(endpoint, {**request, 'token': endpoint['tokens'][seat]})
                 trace.write(json.dumps({'request': request, 'response': reply}) + '\n')
                 trace.flush()
@@ -154,6 +162,7 @@ def main():
             raise
         finally:
             result.update(decisions=dict(decisions), prompts=dict(prompts), privacyChecks=privacy_checks)
+            result['undoChecks'] = [{'seat': seat + 1, 'prompt': prompt} for seat, prompt in sorted(undone_prompts)]
             (output / 'test-results.json').write_text(json.dumps(result, indent=2) + '\n')
             if endpoint is not None and process.poll() is None:
                 try:

@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
 import random
 import unittest
-from gameplay_driver import choose
+from gameplay_driver import choose, choose_undo
 
 
 class DriverTests(unittest.TestCase):
+    def test_undo_uses_the_offered_undo_action(self):
+        selection = {'name': 'SelectionWithTargetsRequired', 'value': {
+            'counter': 42, 'targetMap': {
+                'move': [],
+                'undo': [{'name': 'EntityListTargetInformation', 'forced': False,
+                          'validTargets': [], 'targetPrompt': {'id': 'undoAbility.prompt'}}]}}}
+        self.assertEqual(choose_undo(selection), {'counter': 42, 'op': 'targets', 'source': 'undo',
+                                                 'targets': [{'kind': 'entities', 'values': []}]})
+        selection['value']['targetMap']['undo'][0]['forced'] = True
+        self.assertIsNone(choose_undo(selection))
+        del selection['value']['targetMap']['undo']
+        self.assertIsNone(choose_undo(selection))
+
     def test_riverfolk_can_buy_available_services_or_decline(self):
         selection = {'name': 'ArchetypeCustomChoiceRequired', 'value': {
             'counter': 231, 'forced': False,

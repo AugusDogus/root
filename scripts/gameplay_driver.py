@@ -1,5 +1,19 @@
 """Seeded legal-action policy for exercising the six-faction match."""
 
+def choose_undo(selection):
+    if selection['name'] != 'SelectionWithTargetsRequired':
+        return None
+    value = selection['value']
+    for source, information in value['targetMap'].items():
+        if not any(item.get('targetPrompt', {}).get('id') == 'undoAbility.prompt' for item in information):
+            continue
+        if all(item['name'] == 'EntityListTargetInformation' and not item.get('forced', False)
+               and not item['validTargets'] for item in information):
+            return {'counter': value['counter'], 'op': 'targets', 'source': source,
+                    'targets': [{'kind': 'entities', 'values': []} for _ in information]}
+    return None
+
+
 def choose(selection, rng, undo_ids):
     value = selection['value']
     request = {'counter': value['counter']}

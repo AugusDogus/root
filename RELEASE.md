@@ -1,16 +1,22 @@
-# Root Six Player 0.7.4
+# Root Six Player 0.7.5
 
-- Use Root's original forest artwork, logo, and menu font in the launcher startup window on Windows and Linux.
-- Check for launcher updates when opened, verify the download, and start the newer version automatically. Update downloads become available when this repository is public.
-- Keep the installed version usable when update checks or downloads fail.
-- Retry interrupted build dependency downloads.
+- Ship the Linux launcher as an AppImage.
+- Verify downloaded updates, replace the AppImage in place, and restart it automatically.
+- Preserve the installed AppImage if downloading or staging an update fails.
+
+Linux users upgrading from 0.7.4 or earlier: download the AppImage once. The Linux
+ZIP and standalone launcher update path have been removed. Keep the AppImage in
+a writable folder. Automatic downloads become available when this repository is
+public; until then, download updates from the release page.
 
 Known issue: Shift+Tab may not open the Steam overlay when launched directly.
 The mod's invitation controls still work. This release adds overlay status to
 **Copy diagnostics**, but does not fix overlay loading.
 
-On Windows, download and open **RootSixPlayer.exe**. On Linux, extract the ZIP and open
-**Root Six Player**. Install Root and keep Steam open. Linux also needs Proton
+On Windows, download and open **RootSixPlayer.exe**. On Linux, download
+**RootSixPlayer-0.7.5-x86_64.AppImage**, allow it to run as a program in file
+properties, and open it. If FUSE is unavailable, run it with
+`--appimage-extract-and-run`. Install Root and keep Steam open. Linux also needs Proton
 Experimental and Steam Linux Runtime 4 installed through Steam. First-time setup
 can take several minutes while bindings are generated locally. The launcher closes
 after opening Root. Hosting, saves, and returning to the menu are handled by the mod.

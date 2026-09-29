@@ -17,6 +17,7 @@ internal static class SelectionValidationProbe
         var failures = new List<string>();
         try
         {
+            NumericChoiceProbe.Run(results, failures);
             var ids = Enumerable.Range(0, 3).Select(_ => new EntityID(Guid.NewGuid().ToString())).ToArray();
             foreach (var forced in new[] { false, true })
             foreach (var minimum in new[] { -1, 0, 1, 2, 4 })
@@ -60,15 +61,25 @@ internal static class SelectionValidationProbe
                 if ((new TargetChoice.Number(index).Validate(attributed) == ChoiceResult.Accepted) != expected)
                     failures.Add($"Attributed choice {index} violated bounds");
             }
-            var groups = new[]
+            var groupSets = new[]
             {
-                new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[0], ids[1] } },
-                new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[2] } }
+                new[] {
+                    new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[0], ids[1] } },
+                    new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[2] } }
+                },
+                new[] {
+                    new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[0], ids[1] } },
+                    new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[0], ids[2] } },
+                    new EntityGroupingTargetInformation.Grouping { Items = new[] { ids[1], ids[2] } }
+                }
             };
+            foreach (var groups in groupSets)
             foreach (var forced in new[] { false, true })
-            for (var mask = 0; mask < 4; mask++)
+            foreach (var minimum in new[] { 0, 1, 2 })
+            foreach (var maximum in new[] { 1, 2 })
+            for (var mask = 0; mask < 1 << groups.Length; mask++)
             {
-                var information = new EntityGroupingTargetInformation { ValidTargets = groups, NumberToSelect = 1, MinimumToSelect = 0, Forced = forced };
+                var information = new EntityGroupingTargetInformation { ValidTargets = groups, NumberToSelect = maximum, MinimumToSelect = minimum, Forced = forced };
                 var following = new Il2CppSystem.Collections.Generic.List<TargetInformation>();
                 var node = new tc.selection.EntityGroupingTargetNode(null, information, false, null, null,
                     following.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetInformation>>(), "probe");
@@ -81,7 +92,8 @@ internal static class SelectionValidationProbe
                     }
                 var chosen = groups.Where((_, index) => (mask & (1 << index)) != 0).SelectMany(group => group.Items.Select(id => id.ToString())).ToArray();
                 var actual = new TargetChoice.Entities(chosen).Validate(information);
-                if ((actual == ChoiceResult.Accepted) != (available && node.satisfied)) failures.Add($"Grouping forced={forced} mask={mask}: native={available && node.satisfied}, host={actual}");
+                if ((actual == ChoiceResult.Accepted) != (available && node.satisfied)) failures.Add($"Grouping forced={forced} minimum={minimum} maximum={maximum} groups={groups.Length} mask={mask}: native={available && node.satisfied}, host={actual}");
+                results.Add(new { kind = "groups", forced, minimum, maximum, groups = groups.Length, mask, nativeAccepts = available && node.satisfied, ours = actual.ToString() });
                 if (new TargetChoice.Entities(new[] { ids[0].ToString() }).Validate(information) != ChoiceResult.InvalidTarget)
                     failures.Add("Grouping accepted a partial group");
             }

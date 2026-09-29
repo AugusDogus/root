@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,16 @@ func main() {
 		return
 	}
 	if err := run(); err != nil {
+		var handoff *launcherHandoff
+		if errors.As(err, &handoff) {
+			// run has closed its progress window and released the data lock.
+			command := exec.Command(handoff.executable, os.Args[1:]...)
+			if err = command.Start(); err == nil {
+				_ = command.Process.Release()
+				return
+			}
+			err = fmt.Errorf("The updated launcher could not start. Download the latest launcher from GitHub Releases and retry: %w", err)
+		}
 		log.Print(err)
 		reportError("Root Six Player could not open.\n\n" + err.Error() + "\n\nYour Steam installation and saved matches have not been removed.")
 		os.Exit(1)
@@ -47,6 +58,7 @@ func run() (result error) {
 	menuMode := flag.String("test-menu", "", "Native UI probe mode (isolated tests only)")
 	licenseDir := flag.String("licenses", "", "Extract bundled dependency notices and source archives")
 	version := flag.Bool("version", false, "Print launcher version")
+	noUpdate := flag.Bool("no-update", false, "Skip automatic launcher updates for this launch")
 	flag.Parse()
 	if *headless {
 		reportError = func(message string) { fmt.Fprintln(os.Stderr, message) }
@@ -93,7 +105,7 @@ func run() (result error) {
 		return err
 	}
 	*data = filepath.Join(resolvedParent, remaining)
-	inst, err := Discover(*game)
+	inst, err := DiscoverForUpdate(*game)
 	if err != nil {
 		return err
 	}
@@ -124,6 +136,15 @@ func run() (result error) {
 		update, closeWindow := OpenProgress(inst)
 		defer closeWindow()
 		progress = func(message string) { log.Print(message); update(message) }
+	}
+	if !*headless && !*prepareOnly && !*noUpdate {
+		updated, err := launcherUpdate(ctx, *data, progress)
+		if err != nil {
+			return err
+		}
+		if updated != "" {
+			return &launcherHandoff{executable: updated}
+		}
 	}
 	if err = Prepare(inst, *data, payload, progress); err != nil {
 		return err

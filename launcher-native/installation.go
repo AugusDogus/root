@@ -103,6 +103,10 @@ func librariesFor(root string) ([]string, error) {
 }
 
 func validateGame(game string) error {
+	return validateInstalledGame(game, GameBuild)
+}
+
+func validateInstalledGame(game, supportedBuild string) error {
 	manifest := filepath.Join(filepath.Dir(filepath.Dir(game)), "appmanifest_"+AppID+".acf")
 	pairs, err := vdfPairs(manifest)
 	if err != nil {
@@ -112,7 +116,7 @@ func validateGame(game string) error {
 	for _, pair := range pairs {
 		fields[pair[0]] = pair[1]
 	}
-	if fields["appid"] != AppID || fields["buildid"] != GameBuild {
+	if fields["appid"] != AppID || fields["buildid"] == "" || (supportedBuild != "" && fields["buildid"] != supportedBuild) {
 		return fmt.Errorf("this mod needs Root Steam build %s; the selected installation has build %q. No game files were changed", GameBuild, fields["buildid"])
 	}
 	if fields["installdir"] != filepath.Base(game) {
@@ -135,6 +139,22 @@ func Discover(override string) (Installation, error) {
 }
 
 func discoverAt(override string, roots []string) (Installation, error) {
+	return discoverWithValidation(override, roots, validateGame)
+}
+
+// Updating must remain possible after Steam installs a newer Root build. Only
+// discovery relaxes the build pin; Prepare still validates it before writes.
+func DiscoverForUpdate(override string) (Installation, error) {
+	roots, err := steamRoots()
+	if err != nil {
+		return Installation{}, err
+	}
+	return discoverWithValidation(override, roots, func(game string) error {
+		return validateInstalledGame(game, "")
+	})
+}
+
+func discoverWithValidation(override string, roots []string, validate func(string) error) (Installation, error) {
 	var firstError error
 	for _, root := range roots {
 		if !directoryExists(filepath.Join(root, "steamapps")) {
@@ -169,7 +189,7 @@ func discoverAt(override string, roots []string) (Installation, error) {
 			if !directoryExists(game) {
 				continue
 			}
-			if err = validateGame(game); err != nil {
+			if err = validate(game); err != nil {
 				if firstError == nil {
 					firstError = err
 				}

@@ -114,6 +114,23 @@ The test creates a dedicated Xvfb display and captures normal, scaled, and
 missing-artwork states under its test-run directory. Windows CI exercises the
 native window lifecycle separately.
 
+## Launcher updates
+
+Normal launches check this repository's latest public GitHub release. Only a
+newer three-part stable version is accepted. The updater downloads the platform
+asset and its `SHA256SUMS`, verifies the archive, and stages a versioned executable
+under `launcher-updates` in the launcher data folder. After releasing the setup
+lock, the old process starts that executable with the original arguments and exits.
+Windows never needs to replace a running EXE.
+
+The original downloaded launcher remains a working entry point: it hands off to
+the cached newer version, which performs subsequent update checks. The cache is
+checked again before execution. Private-repository responses, rate limits, and
+network failures keep the installed version usable. A corrupt cached executable
+is rejected with recovery instructions. Headless tests, preparation-only runs,
+and `--no-update` skip automatic updating. No GitHub credentials are bundled or
+requested. Public downloads must be enabled before friends receive updates.
+
 CI verifies packaging, native launcher tests on both operating systems, protocol
 logic, and notice extraction from both executables. It does not verify native
 Windows gameplay, Steam invitations between accounts, or the complete game UI.

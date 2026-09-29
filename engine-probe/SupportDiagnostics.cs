@@ -7,10 +7,10 @@ namespace RootEngineProbe;
 internal static class SupportDiagnostics
 {
     public static string Create(string platform, string gameVersion, string unityVersion,
-        int width, int height, bool playing, bool hosting, string screen) => JsonSerializer.Serialize(new
+        int width, int height, bool playing, bool hosting, string screen, bool? steamOverlayEnabled = null) => JsonSerializer.Serialize(new
         {
-            product = "Root Six Player", version = "0.7.2", supportedBuild = "22238765",
+            product = "Root Six Player", version = "0.7.3", supportedBuild = "22238765",
             platform, gameVersion, unityVersion, width, height, playing, hosting, screen,
-            privatePlaytestContent = true
+            privatePlaytestContent = true, steamOverlayEnabled
         }, new JsonSerializerOptions { WriteIndented = true });
 }

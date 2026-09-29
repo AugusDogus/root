@@ -1,10 +1,11 @@
-# Root Six Player 0.7.2
+# Root Six Player 0.7.3
 
-- Preserve your saved resolution and fullscreen preference when launching.
-- Remember AI, faction, and Clockwork settings for seats five and six.
-- Accept optional empty choices, including canceling movement and continuing after a discard.
-- Keep the native Resign button in the private match flow. Disconnected players can return to the menu instead of waiting for an absent host.
-- Move the Vagabond backpack clear of the sixth player panel and hand of cards.
+- Fix Alliance Recruit and Undo, along with other actions whose targets the game selects automatically.
+- Place the Vagabond inventory beside its bottom panel, with the hand fitted between the inventory and action buttons.
+
+Known issue: Shift+Tab may not open the Steam overlay when launched directly.
+The mod's invitation controls still work. This release adds overlay status to
+**Copy diagnostics**, but does not fix overlay loading.
 
 On Windows, download and open **RootSixPlayer.exe**. On Linux, extract the ZIP and open
 **Root Six Player**. Install Root and keep Steam open. Linux also needs Proton

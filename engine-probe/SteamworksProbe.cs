@@ -93,6 +93,7 @@ public sealed class SteamworksProbe : MonoBehaviour
             status, detail, chunks = verified, bytes = verified * 65536,
             steamInitialized = Steamworks.SteamClient.IsValid,
             loggedOn = Steamworks.SteamClient.IsValid && Steamworks.SteamClient.IsLoggedOn,
+            overlayEnabled = api?.OverlayEnabled,
             inviteExport = api?.HasExport("SteamAPI_ISteamFriends_InviteUserToGame"),
             listenP2PExport = api?.HasExport("SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2P"),
             connectP2PExport = api?.HasExport("SteamAPI_ISteamNetworkingSockets_ConnectP2P"),

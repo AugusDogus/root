@@ -45,7 +45,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
                     throw new InvalidOperationException("A match is already starting. Close Root before starting another.");
                 startingHost = session.StartHost(save, setup, initialization);
                 Status("starting");
-            }, () => invitations?.Friends().OrderBy(friend => friend.Name).ToArray() ?? Array.Empty<(ulong, string)>(), SendInvitation);
+            }, () => invitations?.Friends().OrderBy(friend => friend.Name).ToArray() ?? Array.Empty<(ulong, string)>(), SendInvitation, () => api?.OverlayEnabled);
         }
         Application.targetFrameRate = Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") == "1" ? 60 : 20;
         if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1") QualitySettings.SetQualityLevel(0, true);

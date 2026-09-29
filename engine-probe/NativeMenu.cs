@@ -19,6 +19,7 @@ internal sealed class NativeMenu
     private MatchSetup hostedSetup = new();
     private readonly Func<(ulong Id, string Name)[]> friends;
     private readonly Func<int, ulong, string> invite;
+    private readonly Func<bool?> overlayEnabled;
     private GameObject? root;
     private GameObject? page;
     private Sprite? paper;
@@ -79,9 +80,10 @@ internal sealed class NativeMenu
     }
     public void InviteSeat(int seat) => Friends(seat, friends(), 0);
 
-    public NativeMenu(string lab, Action<string?, MatchSetup, string?> startHost, Func<(ulong, string)[]> friends, Func<int, ulong, string> invite)
+    public NativeMenu(string lab, Action<string?, MatchSetup, string?> startHost, Func<(ulong, string)[]> friends, Func<int, ulong, string> invite, Func<bool?> overlayEnabled)
     {
         this.lab = lab; this.startHost = startHost; this.friends = friends; this.invite = invite;
+        this.overlayEnabled = overlayEnabled;
         setupMenu = new(result => Host(null, initialization: Canis.json.JSON.ToJSON(result, false)), Home);
     }
     public void SetHostedSetup(MatchSetup setup) => hostedSetup = setup;
@@ -151,7 +153,7 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.7.2 · Friends' playtest", 28, 635, 410, 32, 18);
+        Text("Version 0.7.3 · Friends' playtest", 28, 635, 410, 32, 18);
         Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
@@ -316,7 +318,7 @@ internal sealed class NativeMenu
         Button("Copy diagnostics", x, y, 360, 55, () =>
         {
             var report = SupportDiagnostics.Create(Application.platform.ToString(),
-                Application.version, Application.unityVersion, UnityEngine.Screen.width, UnityEngine.Screen.height, playing, hosting, Screen);
+                Application.version, Application.unityVersion, UnityEngine.Screen.width, UnityEngine.Screen.height, playing, hosting, Screen, overlayEnabled());
             GUIUtility.systemCopyBuffer = report;
             if (Environment.GetEnvironmentVariable("ROOT_FRIENDS_LAUNCHER") != "1")
                 File.WriteAllText(Path.Combine(lab, "diagnostics-copy-verified"), (GUIUtility.systemCopyBuffer == report).ToString());

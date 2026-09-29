@@ -16,6 +16,8 @@ internal sealed class SteamNative : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate IntPtr Interface();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)] private delegate bool OverlayStatus(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool CreatePair(IntPtr self, out uint first, out uint second,
         [MarshalAs(UnmanagedType.I1)] bool networkLoopback, IntPtr firstIdentity, IntPtr secondIdentity);
@@ -49,6 +51,8 @@ internal sealed class SteamNative : IDisposable
     internal IntPtr Sockets => sockets;
     internal T Bind<T>(string name) where T : Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
     public bool HasExport(string name) => NativeLibrary.TryGetExport(library, name, out _);
+    public bool OverlayEnabled => Bind<OverlayStatus>("SteamAPI_ISteamUtils_IsOverlayEnabled")(
+        Bind<Interface>("SteamAPI_SteamUtils_v010")());
 
     public (uint First, uint Second) Pair()
     {

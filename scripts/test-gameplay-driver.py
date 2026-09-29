@@ -2,9 +2,29 @@
 import random
 import unittest
 from gameplay_driver import choose, choose_undo
+from alliance_actions import AllianceActions
 
 
 class DriverTests(unittest.TestCase):
+    def test_alliance_regression_requires_recruit_organize_then_undo(self):
+        sequence = AllianceActions()
+        rng = random.Random(0)
+        def offer(label, selected, targets, forced):
+            return {'name': 'SelectionWithTargetsRequired', 'value': {
+                'counter': 41, 'forced': False,
+                'prompt': {'id': 'tuber.canis.actions.WoodlandAllianceActions.WoodlandAllianceEveningAction'},
+                'targetMap': {'action': [{'name': 'EntityListTargetInformation', 'selected': selected,
+                    'validTargets': targets, 'numberToSelect': 1, 'minimumToSelect': 0, 'forced': forced,
+                    'targetPrompt': {'id': label}}]}}}
+        recruit = sequence.request(offer('WoodlandAllianceRecruitAbility', False, ['base'], True), rng, set())
+        self.assertEqual(recruit['targets'], [])
+        organize = sequence.request(offer('OrganizeAbility', True, ['clearing'], True), rng, set())
+        self.assertEqual(organize['targets'], [{'kind': 'entities', 'values': ['clearing']}])
+        self.assertFalse(sequence.done)
+        undo = sequence.request(offer('undoAbility.prompt', False, [], False), rng, set())
+        self.assertEqual(undo['targets'], [])
+        self.assertTrue(sequence.done)
+
     def test_recruit_omits_automatic_targets(self):
         selection = {'name': 'SelectionWithTargetsRequired', 'value': {
             'counter': 41, 'forced': True, 'prompt': {'id': 'WoodlandAllianceEveningAction'},

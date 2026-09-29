@@ -14,6 +14,7 @@ from selection_messages import latest_selection
 from test_client_support import exchange, stop
 from gameplay_driver import choose, choose_undo
 from gameplay_checks import check_private_snapshots
+from alliance_actions import AllianceActions
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -26,6 +27,7 @@ def main():
     parser.add_argument('--restart-at', type=int, help='Autosave, crash the native host at this decision, and resume')
     parser.add_argument('--resume-checkpoint', type=Path, help='Continue an existing test checkpoint')
     parser.add_argument('--exercise-undo', action='store_true', help='Submit each offered Undo prompt once per seat, then continue to victory')
+    parser.add_argument('--alliance-actions', action='store_true', help='Stop after recruiting, organizing, and undoing Organize through the authority')
     args = parser.parse_args()
     output = PROJECT / ('.lab/results/recovery-gameplay' if args.restart_at is not None or args.resume_checkpoint else '.lab/results/gameplay')
     output.mkdir(parents=True, exist_ok=True)
@@ -35,6 +37,7 @@ def main():
     prompts = Counter()
     privacy_checks = []
     undone_prompts = set()
+    alliance = AllianceActions() if args.alliance_actions else None
     result = {'status': 'failed', 'seed': args.seed}
     (output / 'test-results.json').write_text(json.dumps({'status': 'running', 'seed': args.seed}) + '\n')
     started = time.time()
@@ -145,10 +148,12 @@ def main():
                 assert repeated < 20, f'Bot made no progress past {prompt} for 20 decisions'
                 trace.write(json.dumps({'step': step, 'seat': seat + 1, 'selection': selection}) + '\n')
                 trace.flush()
-                request = choose_undo(selection) if args.exercise_undo and prompt not in undone_prompts else None
-                if request is not None:
+                request = alliance.request(selection, rng, undo_ids) if alliance else None
+                undo = choose_undo(selection) if request is None and args.exercise_undo and prompt not in undone_prompts else None
+                if undo is not None:
+                    request = undo
                     undone_prompts.add(prompt)
-                else:
+                if request is None:
                     request = choose(selection, rng, undo_ids)
                 reply = exchange(endpoint, {**request, 'token': endpoint['tokens'][seat]})
                 trace.write(json.dumps({'request': request, 'response': reply}) + '\n')
@@ -156,6 +161,11 @@ def main():
                 assert reply == {'ok': True}, (seat + 1, selection['value']['prompt']['id'], request, reply)
                 decisions[seat + 1] += 1
                 prompts[selection['value']['prompt']['id']] += 1
+                if alliance and alliance.done:
+                    result.update(status='passed', allianceActions=alliance.completed)
+                    break
+            if alliance:
+                assert alliance.done, f'Alliance sequence incomplete: {alliance.completed}'
             assert result['status'] == 'passed', f'No victory after {args.steps} decisions'
         except Exception as error:
             result.update(status='failed', error=str(error))
@@ -170,7 +180,8 @@ def main():
                 except (OSError, ValueError):
                     pass
             stop(process)
-    print(f'PASS: six-player match reaches victory after {sum(decisions.values())} decisions')
+    outcome = 'Alliance recruits, organizes, and undoes Organize' if alliance else 'six-player match reaches victory'
+    print(f'PASS: {outcome} after {sum(decisions.values())} decisions')
 
 
 if __name__ == '__main__':

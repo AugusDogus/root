@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
+using SettingsPromptBehaviour = tuber.client.match.prompt.behaviours.SettingsPromptBehaviour;
 
 namespace RootEngineProbe;
 
@@ -53,6 +54,14 @@ internal static class NativeUiAuditProbe
             toolbar = Toolbar(),
             matchControls = GameObject.Find("Root Six Player Menu")?.GetComponentsInChildren<Button>()
                 .Select(button => button.name).ToArray(),
+            menuButtons = GameObject.Find("Root Six Player Menu")?.GetComponentsInChildren<Button>()
+                .Select(button => new { button.name, bounds = Button(button) }).ToArray(),
+            settingsOpen = Object.FindObjectOfType<SettingsPromptBehaviour>() != null,
+            satchels = Object.FindObjectsOfType<tuber.client.match.voodoo.VagabondSatchelLayout>()
+                .Select(item => new { item.name, active = item.gameObject.activeInHierarchy,
+                    position = item.transform.TryCast<RectTransform>()?.anchoredPosition.ToString(),
+                    bounds = Rectangle(item.transform.TryCast<RectTransform>()),
+                    drawer = Rectangle(item.transform.parent?.TryCast<RectTransform>()) }).ToArray(),
             itemSelection = items == null ? null : new
             {
                 choices = items.Prompt.Choices.Count,
@@ -103,6 +112,24 @@ internal static class NativeUiAuditProbe
     {
         switch (command.GetProperty("op").GetString())
         {
+            case "show-satchels":
+                foreach (var toggle in Object.FindObjectsOfType<tuber.client.match.ui.VagabondSatchelToggle>())
+                    toggle.Event_ToggleShown(true);
+                break;
+            case "settings":
+                dwd.core.commands.CommandExecutor.Get().Execute(new tuber.client.menus.commands.RunSettingsFlow(SettingsPromptTab.General));
+                break;
+            case "native-resign":
+                Object.FindObjectOfType<SettingsPromptBehaviour>().Event_ResignGame();
+                break;
+            case "connection-lost":
+                if (PrivateClient.Active is not { } disconnected) throw new InvalidOperationException("No private client.");
+                disconnected.ReplaceTransport(_ => Task.FromException<JsonElement>(new IOException("Simulated host disconnect.")));
+                break;
+            case "menu-button":
+                GameObject.Find("Root Six Player Menu").GetComponentsInChildren<Button>()
+                    .Single(button => button.name == command.GetProperty("name").GetString()).onClick.Invoke();
+                break;
             case "take-first-item":
                 var items = Object.FindObjectOfType<tuber.client.match.prompt.behaviours.VagabondItemSelectPromptBehaviour>()
                     ?? throw new InvalidOperationException("No item selection is open.");
@@ -168,6 +195,18 @@ internal static class NativeUiAuditProbe
             .Select(button => (object)new { button.name, active = button.gameObject.activeInHierarchy, bounds = Button(button) }).ToArray();
     }
 
+    private static object? Rectangle(RectTransform? rectangle)
+    {
+        if (rectangle == null) return null;
+        var canvas = rectangle.GetComponentInParent<Canvas>();
+        var camera = canvas?.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas?.worldCamera;
+        var corners = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(4);
+        rectangle.GetWorldCorners(corners);
+        var points = corners.Select(point => RectTransformUtility.WorldToScreenPoint(camera, point)).ToArray();
+        return new { left = points.Min(p => p.x), right = points.Max(p => p.x),
+            bottom = points.Min(p => p.y), top = points.Max(p => p.y) };
+    }
+
     private static object? Button(Selectable? button)
     {
         if (button == null) return null;
@@ -191,7 +230,8 @@ internal static class NativeUiAuditProbe
             visibleWidth = Math.Max(0, Math.Min(Screen.width, right) - Math.Max(0, left)),
             visibleHeight = Math.Max(0, Math.Min(Screen.height, top) - Math.Max(0, bottom)),
             inside = points.All(p => p.x >= 0 && p.x <= Screen.width && p.y >= 0 && p.y <= Screen.height),
-            reachable = hits.Count > 0 && hits[0].gameObject.transform.IsChildOf(button.transform)
+            reachable = hits.Count > 0 && hits[0].gameObject.transform.IsChildOf(button.transform),
+            topHit = hits.Count > 0 ? hits[0].gameObject.name : null
         };
     }
 }

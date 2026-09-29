@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--fixture', type=Path, help='Resume a copied graphical-test checkpoint; preserve the source')
     parser.add_argument('--trading', action='store_true', help='Check the native Riverfolk price controls without submitting moves')
     parser.add_argument('--explore-item', action='store_true', help='Resume an Explore checkpoint and take an item through the native prompt')
+    parser.add_argument('--reported-ui', action='store_true', help='Check expanded satchels and native resignation after a simulated disconnect')
     args = parser.parse_args()
     if args.explore_item and args.fixture is None:
         parser.error('--explore-item requires --fixture so the test plays a disposable copy')
@@ -63,7 +64,7 @@ def main():
     for name in ('ui-audit-command.json', 'ui-audit-state.json', 'owned-content.fixture', 'fixture-ownership-active', 'view.txt', 'command.txt', 'error.txt', 'blocked-online-flow.txt'):
         (output / name).unlink(missing_ok=True)
     evidence = []
-    with fixture_save(lab, args.fixture, untimed=args.explore_item), online_session(lab) as session:
+    with fixture_save(lab, args.fixture, untimed=args.explore_item or args.reported_ui), online_session(lab) as session:
         launched_at = time.time()
         session.perform('play', {})
 
@@ -75,7 +76,10 @@ def main():
 
         def wait(name, predicate, seconds=240):
             def check():
-                problem = session.status()['error'] or state().get('error')
+                connection_error = session.status()['error']
+                if args.reported_ui and connection_error == 'Simulated host disconnect.':
+                    connection_error = None
+                problem = connection_error or state().get('error')
                 log = lab / 'client/game/BepInEx/LogOutput.log'
                 if log.exists() and log.stat().st_mtime >= launched_at and '[Error  :Il2CppInterop] Exception in IL2CPP-to-Managed trampoline' in log.read_text():
                     raise RuntimeError('A mod callback failed. Inspect the isolated client BepInEx log before retrying.')
@@ -152,6 +156,43 @@ def main():
              any(panel['count'] == 6 for panel in state().get('panels', [])))
         session.assert_launcher_exited()
         command('capture')
+        if args.reported_ui:
+            for width, height in [(1920, 1080), (1280, 800), (1280, 720)]:
+                command('resize', width=width, height=height)
+                wait('window size', lambda: (state().get('width'), state().get('height')) == (width, height), 30)
+                command('show-satchels')
+                time.sleep(2)
+                capture(f'satchel-{width}x{height}', width, height)
+                satchels = state()['satchels']
+                assert satchels, 'Fixture has no visible Vagabond inventory'
+                for satchel in satchels:
+                    bounds, drawer = satchel['bounds'], satchel['drawer']
+                    assert bounds['left'] >= drawer['right'], satchel
+                    assert bounds['bottom'] >= drawer['top'], satchel
+                    assert 0 <= bounds['bottom'] < bounds['top'] <= height, satchel
+                    assert 0 <= bounds['left'] < bounds['right'] <= width, satchel
+            command('settings')
+            wait('native settings', lambda: state().get('settingsOpen'), 30)
+            command('native-resign')
+            wait('private resign confirmation', lambda: screen('confirm'), 30)
+            assert any(panel['count'] == 6 for panel in state()['panels']), 'Native resign exited the board before confirmation'
+            command('menu-button', name='Cancel')
+            command('back-to-board')
+            command('connection-lost')
+            wait('lost transport', lambda: session.status()['error'] == 'Simulated host disconnect.', 30)
+            command('settings')
+            wait('native settings after disconnect', lambda: state().get('settingsOpen'), 30)
+            command('native-resign')
+            wait('disconnected resignation error', lambda: screen('error'), 30)
+            assert 'Return to menu' in state()['matchControls']
+            capture('resign-disconnected', state()['width'], state()['height'])
+            command('menu-button', name='Return to menu')
+            try:
+                wait('return after disconnected resignation', lambda: screen('home'), 120)
+            finally:
+                capture('return-after-disconnect', state()['width'], state()['height'])
+            print('Satchel bounds and native resignation recovery passed.', flush=True)
+            return
         if args.explore_item:
             from network import exchange
             endpoint = session.endpoint

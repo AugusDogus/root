@@ -18,6 +18,20 @@ internal static class SelectionValidationProbe
         try
         {
             var ids = Enumerable.Range(0, 3).Select(_ => new EntityID(Guid.NewGuid().ToString())).ToArray();
+            foreach (var forced in new[] { false, true })
+            foreach (var minimum in new[] { -1, 0, 1, 2 })
+            for (var count = 0; count <= 2; count++)
+            {
+                var information = new EntityListTargetInformation
+                { ValidTargets = ids, NumberToSelect = 2, MinimumToSelect = minimum, Forced = forced };
+                var following = new Il2CppSystem.Collections.Generic.List<TargetInformation>();
+                var node = new EntityListTargetNode(null, information, false, null, null,
+                    following.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetInformation>>(), "optional-target-probe");
+                foreach (var id in ids.Take(count)) node.Select(id);
+                var actual = new TargetChoice.Entities(ids.Take(count).Select(id => id.ToString()).ToArray()).Validate(information);
+                if ((actual == ChoiceResult.Accepted) != node.satisfied)
+                    failures.Add($"Entity choice forced={forced} minimum={minimum} count={count}: native={node.satisfied}, host={actual}");
+            }
             var attributed = new CustomChoiceWithAttributesTargetInformation
             {
                 Choices = new[] { new Canis.attributes.SerializableAttributes(), new Canis.attributes.SerializableAttributes() },
@@ -159,6 +173,12 @@ internal static class SelectionValidationProbe
             client.Update(0);
             if (client.Notice is not null || sent.GetProperty("op").GetString() != "resign")
                 failures.Add("The native resignation was not forwarded to the private host");
+            client.DiscardQueuedMoves();
+            if (client.Transitioning || !client.ConnectionInterrupted)
+                failures.Add("A lost resignation acknowledgement left the client waiting for a table update");
+            client.Resign();
+            if (client.Transitioning || client.Notice is null)
+                failures.Add("A disconnected client attempted another resignation");
             client.Stop();
         }
         catch (Exception error) { failures.Add(error.ToString()); log.LogError($"RESIGNATION TEST FAILED: {error}"); }

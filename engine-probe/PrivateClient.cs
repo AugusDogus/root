@@ -43,6 +43,8 @@ internal sealed class PrivateClient
     public string? Notice { get; set; }
     public bool GameOver { get; private set; }
     public bool Transitioning { get; private set; }
+    public bool ConnectionInterrupted { get; private set; }
+    public Action? ConfirmResignation { get; set; }
     public string? Winner { get; private set; }
     public sealed record Standing(string Faction, int Score, bool Won, bool Dominance);
     public Standing[] Standings { get; private set; } = Array.Empty<Standing>();
@@ -64,11 +66,21 @@ internal sealed class PrivateClient
     public void Ready(bool ready) => outgoing.Enqueue(new { op = "ready", token, ready });
     public void Resign()
     {
+        if (ConnectionInterrupted)
+        {
+            Notice = "The host is disconnected, so your resignation could not be sent. Return to the menu or wait for the host to resume the match.";
+            return;
+        }
         Transitioning = true;
         outgoing.Enqueue(new { op = "resign", token });
         outgoing.Enqueue(new { op = "join", token });
     }
-    public void DiscardQueuedMoves() => outgoing.Clear();
+    public void DiscardQueuedMoves()
+    {
+        outgoing.Clear();
+        Transitioning = false;
+        ConnectionInterrupted = true;
+    }
     public void ReplaceTransport(Func<object, Task<JsonElement>> transport)
     {
         if (pending is { } abandoned) _ = abandoned.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
@@ -117,6 +129,18 @@ internal sealed class PrivateClient
         foreach (var arguments in new[] { new[] { typeof(Il2CppSystem.Object) }, new[] { typeof(Il2CppSystem.Object), typeof(AccountID) } })
             harmony.Patch(AccessTools.Method(typeof(TuberCanisMatch), nameof(TuberCanisMatch.Write), arguments),
                 prefix: new HarmonyMethod(typeof(PrivateClient), nameof(SendChoice)));
+        harmony.Patch(AccessTools.Method(typeof(tuber.client.match.prompt.behaviours.SettingsPromptBehaviour), "Event_ResignGame"),
+            prefix: new HarmonyMethod(typeof(PrivateClient), nameof(ResignFromSettings)));
+        NativeVagabondLayout.Install(harmony);
+    }
+
+    private static bool ResignFromSettings(tuber.client.match.prompt.behaviours.SettingsPromptBehaviour __instance)
+    {
+        if (Active?.ConfirmResignation is not { } confirm) return true;
+        // The stock result also exits the board before our host can acknowledge.
+        __instance.Event_Back();
+        confirm();
+        return false;
     }
 
     public void Update(float now)
@@ -124,6 +148,7 @@ internal sealed class PrivateClient
         if (pending is { IsCompleted: true })
         {
             var received = pending.GetAwaiter().GetResult();
+            ConnectionInterrupted = false;
             var response = received.Body;
             pending = null;
             if (response.TryGetProperty("serverTime", out var clock) && clock.TryGetInt64(out var milliseconds))

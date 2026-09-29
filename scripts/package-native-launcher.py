@@ -15,7 +15,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
 from test_budget import require_test_budget
 
-VERSION = '0.7.1'
+VERSION = '0.7.2'
 GAME_BUILD = '22238765'
 UNITY_VERSION = '2022.3.62'
 LOADER_SHA256 = 'f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a'

@@ -1,13 +1,10 @@
-# Root Six Player 0.7.1
+# Root Six Player 0.7.2
 
-Fixes for lobby navigation and blocked game actions:
-
-- Back returns from the lobby to an interactive menu.
-- All six character models remain visible through setup and lobby creation. Seats five and six no longer show duplicate models.
-- Reset includes all six seats, and you can change seats to AI after leaving a lobby.
-- Declining Riverfolk services and resigning through Root's menu reach the private host.
-- Exploring ruins displays the available items. Existing saves recover visibility for players who explored those ruins.
-- Removed the in-game ready button and board-level invitation button. Disconnected seats can be reassigned from Match.
+- Preserve your saved resolution and fullscreen preference when launching.
+- Remember AI, faction, and Clockwork settings for seats five and six.
+- Accept optional empty choices, including canceling movement and continuing after a discard.
+- Keep the native Resign button in the private match flow. Disconnected players can return to the menu instead of waiting for an absent host.
+- Move the Vagabond backpack clear of the sixth player panel and hand of cards.
 
 On Windows, download and open **RootSixPlayer.exe**. On Linux, extract the ZIP and open
 **Root Six Player**. Install Root and keep Steam open. Linux also needs Proton
@@ -22,5 +19,4 @@ the host is closed.
 
 Supported game: Root 2.1.5, Steam build 22238765. Private playtest expansion choices
 do not require account unlocks. This does not change purchases or ordinary Steam Root.
-This remains a playtest build. Native Windows gameplay and Steam invitations
-between different accounts still need real-player testing.
+This remains a playtest build.

@@ -151,7 +151,7 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.7.1 · Friends' playtest", 28, 635, 410, 32, 18);
+        Text("Version 0.7.2 · Friends' playtest", 28, 635, 410, 32, 18);
         Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
     }
 
@@ -195,12 +195,13 @@ internal sealed class NativeMenu
         Button("Back", 460, 675, 360, 60, Home);
     }
 
-    public void Connecting(string title, string detail)
+    public void Connecting(string title, string detail, Action? returnHome = null)
     {
         if (root == null) return;
         Begin(true, "connecting");
         Text(title, 260, 250, 760, 75, 38);
         Text(detail, 280, 345, 720, 110, 24);
+        if (returnHome is not null) Button("Return to menu", 460, 555, 360, 62, returnHome);
     }
 
     public void Playing(bool isHost)

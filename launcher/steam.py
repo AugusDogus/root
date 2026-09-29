@@ -7,7 +7,7 @@ import sys
 
 APP_ID = '965580'
 BUILD = '22238765'
-VERSION = '0.7.1'
+VERSION = '0.7.2'
 
 
 @dataclass(frozen=True)

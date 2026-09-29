@@ -119,7 +119,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
             if (guest?.Reconnecting == true)
             {
                 client?.DiscardQueuedMoves();
-                if (!reconnecting) menu?.Connecting("Reconnecting…", "Checking the current board. Your last move will not be repeated.");
+                if (!reconnecting) menu?.Connecting("Reconnecting…", "Checking the current board. Your last move will not be repeated.", ReturnHome);
                 reconnecting = true;
             }
             else if (reconnecting) { reconnecting = false; menu?.ReturnToBoard(); }
@@ -134,6 +134,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         }
         catch (Exception failure)
         {
+            client?.DiscardQueuedMoves();
             error = failure.Message;
             Status("error");
             menu?.Error(error, accepted is not null ? Reconnect : null, ReturnHome);
@@ -190,7 +191,7 @@ public sealed class SteamSessionBehaviour : MonoBehaviour
         else client.ReplaceTransport(guest.Exchange);
         error = null;
         File.Delete(Path.Combine(lab, "steam-status.json"));
-        menu?.Connecting("Reconnecting…", "Checking your seat and the current board.");
+        menu?.Connecting("Reconnecting…", "Checking your seat and the current board.", ReturnHome);
         reconnecting = true;
     }
     private void AttachControls()

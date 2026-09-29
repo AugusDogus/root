@@ -14,14 +14,22 @@ internal sealed class NativeMatchMenu
     private SeatStatus[] displayedSeats = Array.Empty<SeatStatus>();
 
     public NativeMatchMenu(NativeMenu view, PrivateClient client, Func<SeatStatus[]> roster, Func<int, bool>? release, Action returnHome)
-    { this.view = view; this.client = client; this.roster = roster; this.release = release; this.returnHome = returnHome; }
+    {
+        this.view = view; this.client = client; this.roster = roster; this.release = release; this.returnHome = returnHome;
+        client.ConfirmResignation = ConfirmResign;
+    }
 
     public void Update(float now)
     {
         if (view.Screen == "error") return;
+        if (client.ConnectionInterrupted)
+        {
+            transitioning = false;
+            return;
+        }
         if (client.Transitioning)
         {
-            if (!transitioning) view.Connecting("Updating the table…", "Waiting for Root to finish the change and save the match.");
+            if (!transitioning) view.Connecting("Updating the table…", "Waiting for Root to finish the change and save the match.", returnHome);
             transitioning = true;
             return;
         }
@@ -60,14 +68,24 @@ internal sealed class NativeMatchMenu
         var self = client.Lobby.FirstOrDefault(seat => seat.Seat == client.Seat);
         if (!client.GameOver && self?.State != "Resigned")
         {
-            view.Button("Resign", 460, 600, 320, 55, () => Confirm("Resign from this match?",
-                "Root's AI will take over your faction. This cannot be undone. You can stay to watch the match.", client.Resign));
+            view.Button("Resign", 460, 600, 320, 55, ConfirmResign);
         }
         if (client.GameOver) view.Button("Results", 460, 600, 320, 55, Results);
         view.Button("Return to menu", 840, 600, 350, 55, () => Confirm("Return to the menu?",
             release is null ? "You will leave this table. The host can invite you again."
                 : "This stops the match for everyone. Saved moves are kept, but any active turn timer keeps running. Resume later and send new invitations.", returnHome));
         view.Button("Back to game", 450, 700, 380, 55, view.ReturnToBoard);
+    }
+
+    private void ConfirmResign()
+    {
+        if (client.ConnectionInterrupted)
+        {
+            view.Error("The host is disconnected. A resignation cannot be confirmed until the host resumes the match.", returnHome: returnHome);
+            return;
+        }
+        Confirm("Resign from this match?",
+            "Root's AI will take over your faction. This cannot be undone. You can stay to watch the match.", client.Resign);
     }
 
     private void ConfirmRelease(int seat) => Confirm("Reassign this seat?",

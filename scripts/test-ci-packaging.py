@@ -9,6 +9,7 @@ from pathlib import Path
 import runpy
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import Mock, patch
 import zipfile
 
@@ -181,6 +182,64 @@ class SteamInputTests(unittest.TestCase):
 
     def test_supported_build_matches_packager(self):
         self.assertEqual(references.BUILD, PACKAGE['GAME_BUILD'])
+
+
+class DependencyDownloadTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.cache = Path(self.temporary.name)
+        self.verify = PACKAGE['verified_archive']
+        self.payload = b'verified dependency'
+        self.expected = hashlib.sha256(self.payload).hexdigest()
+        self.globals = patch.dict(self.verify.__globals__, CACHE=self.cache)
+        self.globals.start()
+        self.addCleanup(self.globals.stop)
+
+    def download(self):
+        return self.verify('loader.zip', 'https://example.com/loader.zip', self.expected)
+
+    def test_timeout_retries_then_verifies(self):
+        with patch('urllib.request.urlopen', side_effect=[TimeoutError(), io.BytesIO(self.payload)]) as request, \
+                patch('time.sleep'):
+            self.assertEqual(self.download().read_bytes(), self.payload)
+        self.assertEqual(request.call_count, 2)
+        self.assertFalse((self.cache / 'loader.download').exists())
+
+    def test_partial_download_is_replaced_on_retry(self):
+        partial = Mock()
+        partial.__enter__ = Mock(return_value=partial)
+        partial.__exit__ = Mock(return_value=False)
+        partial.read.side_effect = [b'partial', TimeoutError()]
+        with patch('urllib.request.urlopen', side_effect=[partial, io.BytesIO(self.payload)]), patch('time.sleep'):
+            self.assertEqual(self.download().read_bytes(), self.payload)
+
+    def test_retries_stop_and_remove_partial_file(self):
+        with patch('urllib.request.urlopen', side_effect=TimeoutError()) as request, patch('time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'after 3 attempts'):
+                self.download()
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_transient_http_error_retries(self):
+        error = urllib.error.HTTPError('https://example.com', 503, 'Unavailable', {}, None)
+        with patch('urllib.request.urlopen', side_effect=[error, io.BytesIO(self.payload)]), patch('time.sleep'):
+            self.assertEqual(self.download().read_bytes(), self.payload)
+
+    def test_permanent_http_error_does_not_retry(self):
+        error = urllib.error.HTTPError('https://example.com', 403, 'Forbidden', {}, None)
+        with patch('urllib.request.urlopen', side_effect=error) as request, patch('time.sleep'):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.download()
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_checksum_failure_does_not_retry_or_stage(self):
+        with patch('urllib.request.urlopen', return_value=io.BytesIO(b'wrong bytes')) as request:
+            with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+                self.download()
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(list(self.cache.iterdir()), [])
 
 
 class BuildBudgetTests(unittest.TestCase):

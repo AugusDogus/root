@@ -2,12 +2,15 @@
 """Stage verified dependencies and build native Windows/Linux launchers."""
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -35,6 +38,23 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def download_archive(url, target):
+    request = urllib.request.Request(url, headers={'User-Agent': 'RootSixPlayer-package/0.7'})
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response, target.open('wb') as stream:
+                shutil.copyfileobj(response, stream)
+            return
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code not in (408, 429, 500, 502, 503, 504):
+                raise
+            target.unlink(missing_ok=True)
+            if attempt == 3:
+                raise RuntimeError(f'Download failed after 3 attempts: {url}. No dependency was staged; retry the build when the download service is reachable.') from error
+            print(f'Dependency download interrupted ({type(error).__name__}); retrying {url} (attempt {attempt + 1}/3).', flush=True)
+            time.sleep(2 ** attempt)
+
+
 def verified_archive(name, url, expected, local=None):
     target = CACHE / name
     if not target.exists():
@@ -43,9 +63,7 @@ def verified_archive(name, url, expected, local=None):
             if local is not None and local.exists():
                 shutil.copyfile(local, temporary)
             else:
-                request = urllib.request.Request(url, headers={'User-Agent': 'RootSixPlayer-package/0.7'})
-                with urllib.request.urlopen(request, timeout=60) as response, temporary.open('wb') as stream:
-                    shutil.copyfileobj(response, stream)
+                download_archive(url, temporary)
             if sha256(temporary) != expected:
                 raise ValueError(f'{name} checksum mismatch. No dependency was staged; remove the modified cached input and retry.')
             temporary.replace(target)

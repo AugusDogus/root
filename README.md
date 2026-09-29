@@ -17,8 +17,6 @@ The launcher finds Root, sets up a separate modded copy, and opens the game. Fir
 
 ![The launcher using Root's forest artwork and menu font](docs/screenshots/launcher.png)
 
-Downloads require access to this private repository.
-
 ## Requirements
 
 | Component | Requirement |
@@ -57,13 +55,13 @@ Windows users upgrading from 0.7.5 or earlier need to run Setup once. Linux user
 
 If Linux reports that FUSE is unavailable, run the AppImage with `--appimage-extract-and-run`.
 
-Automatic updates need public release downloads. While this repository is private, download newer launchers from the release page. A failed update check keeps the installed version usable.
+A failed update check keeps the installed version usable. You can also download the latest launcher from the release page.
 
 If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text when [reporting an issue](https://github.com/AugusDogus/root-six-player/issues).
 
 ## Playtest status
 
-Experimental. Steam invitations between different accounts, Internet play, and native Windows gameplay still need real-player testing.
+Experimental. Friends have tested multiplayer between separate Steam accounts on Windows and Linux. Bugs found during those sessions are being fixed; not every faction interaction, network setup, or display configuration has been tested.
 
 ## Development
 

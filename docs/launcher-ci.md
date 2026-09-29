@@ -14,13 +14,14 @@ the CI toolchain upgrade does not update the runtime shipped to players.
 - Pushes to `main` and manual **Run workflow** runs also compile the mod, build
   both launchers, and upload a `launcher-<commit>` artifact for 14 days.
 - Version tags such as `v0.7.0` do the same and automatically publish a release
-  after all checks, including the Windows executable smoke test, pass. Pushing
+  after all checks, including Windows installation and update tests, pass. Pushing
   the tag is the release action. It becomes the latest release so the README's
   download link resolves to it. Existing releases are never overwritten.
 
-Player assets are `RootSixPlayer.exe`, the Windows and Linux ZIPs, and
-`SHA256SUMS`. Each ZIP contains one executable. Dependencies and their notices
-are embedded. Python is used on the build runner, not required by players.
+Player assets are `RootSixPlayer-<version>-Setup.exe`,
+`RootSixPlayer-<version>-x86_64.AppImage`, and `SHA256SUMS`. The Windows installer
+installs per user and creates a Start menu shortcut. Linux users run the AppImage.
+Dependencies and their notices are embedded.
 
 ## One-time Steam login
 
@@ -118,19 +119,24 @@ native window lifecycle separately.
 
 Normal launches check this repository's latest public GitHub release. Only a
 newer three-part stable version is accepted. The updater downloads the platform
-asset and its `SHA256SUMS`, verifies the archive, and stages a versioned executable
-under `launcher-updates` in the launcher data folder. After releasing the setup
-lock, the old process starts that executable with the original arguments and exits.
-Windows never needs to replace a running EXE.
+asset and its `SHA256SUMS` and verifies the download before installation.
 
-The original downloaded launcher remains a working entry point: it hands off to
-the cached newer version, which performs subsequent update checks. The cache is
-checked again before execution. Private-repository responses, rate limits, and
-network failures keep the installed version usable. A corrupt cached executable
-is rejected with recovery instructions. Headless tests, preparation-only runs,
-and `--no-update` skip automatic updating. No GitHub credentials are bundled or
-requested. Public downloads must be enabled before friends receive updates.
+On Windows, the launcher stages the NSIS installer under `launcher-updates` in
+its data folder. It closes its window, releases the setup lock, starts Setup,
+and exits. Setup waits up to 30 seconds for the old process to exit, replaces
+the installed launcher, and restarts it. It never terminates a running process.
+
+On Linux, the launcher stages the new AppImage beside the current one, atomically
+replaces it, and restarts with the original arguments. The AppImage must be in a
+writable folder. Failed downloads or staging preserve the existing image.
+
+Private-repository responses, rate limits, and network failures keep the
+installed version usable. Headless tests, preparation-only runs, and `--no-update`
+skip automatic updating. Update downloads use unauthenticated GitHub requests
+and require public releases.
 
 CI verifies packaging, native launcher tests on both operating systems, protocol
-logic, and notice extraction from both executables. It does not verify native
-Windows gameplay, Steam invitations between accounts, or the complete game UI.
+logic, and notice extraction. Windows checks exercise installation, shortcuts,
+registration, updates while the old launcher is running, restart, and uninstall.
+These automated checks do not exercise native Windows gameplay, Steam invitations
+between accounts, or the complete game UI; those require separate playtests.

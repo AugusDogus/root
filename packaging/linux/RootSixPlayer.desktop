@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Root Six Player
+Comment=Play Root with six players
+Exec=RootSixPlayer
+Icon=root-six-player
+Terminal=false
+Categories=Game;

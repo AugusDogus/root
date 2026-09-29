@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,8 +25,8 @@ func updateFixture(t *testing.T, platform string) (*http.Client, map[string]stri
 	name := "RootSixPlayer.exe"
 	payload := []byte("MZ new Windows launcher")
 	if platform == "linux" {
-		name = "root-six-player-0.8.0-linux.zip"
-		payload = prepareTestZip(t, map[string]string{"Root Six Player": "ELF new Linux launcher"}, "")
+		name = "RootSixPlayer-0.8.0-x86_64.AppImage"
+		payload = appImageFixture("new Linux launcher")
 	}
 	base := "https://github.com/" + releaseRepository + "/releases/download/v0.8.0/"
 	sums := prepareDigest(payload) + "  " + name + "\n"
@@ -48,33 +49,29 @@ func updateFixture(t *testing.T, platform string) (*http.Client, map[string]stri
 	return client, responses, base + name
 }
 
-func TestLauncherUpdateDownloadsAndReusesVerifiedExecutable(t *testing.T) {
-	for _, platform := range []string{"windows", "linux"} {
-		t.Run(platform, func(t *testing.T) {
-			client, _, _ := updateFixture(t, platform)
-			data := t.TempDir()
-			var messages []string
-			path, err := fetchLauncherUpdate(context.Background(), client, data, "0.7.3", platform, func(message string) { messages = append(messages, message) })
-			if err != nil {
-				t.Fatal(err)
-			}
-			if path != launcherUpdatePath(data, "0.8.0", platform) || len(messages) != 2 {
-				t.Fatalf("unexpected update: %s, %v", path, messages)
-			}
-			cached, err := cachedLauncherUpdate(data, "0.7.3", platform)
-			if err != nil || cached != path {
-				t.Fatalf("offline cache lookup: %s, %v", cached, err)
-			}
-			if cached, err := cachedLauncherUpdate(data, "0.8.0", platform); err != nil || cached != "" {
-				t.Fatalf("updated launcher must not hand off to itself: %s, %v", cached, err)
-			}
-			if err := os.WriteFile(path, []byte("changed"), 0700); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := cachedLauncherUpdate(data, "0.7.3", platform); err == nil {
-				t.Fatal("changed executable was accepted")
-			}
-		})
+func TestWindowsUpdateDownloadsAndReusesVerifiedExecutable(t *testing.T) {
+	client, _, _ := updateFixture(t, "windows")
+	data := t.TempDir()
+	var messages []string
+	path, err := fetchLauncherUpdate(context.Background(), client, data, "0.7.3", "windows", func(message string) { messages = append(messages, message) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != launcherUpdatePath(data, "0.8.0") || len(messages) != 2 {
+		t.Fatalf("unexpected update: %s, %v", path, messages)
+	}
+	cached, err := cachedLauncherUpdate(data, "0.7.3")
+	if err != nil || cached != path {
+		t.Fatalf("offline cache lookup: %s, %v", cached, err)
+	}
+	if cached, err := cachedLauncherUpdate(data, "0.8.0"); err != nil || cached != "" {
+		t.Fatalf("updated launcher must not hand off to itself: %s, %v", cached, err)
+	}
+	if err := os.WriteFile(path, []byte("changed"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cachedLauncherUpdate(data, "0.7.3"); err == nil {
+		t.Fatal("changed executable was accepted")
 	}
 }
 
@@ -82,7 +79,7 @@ func TestFailedDownloadPreservesCachedVersion(t *testing.T) {
 	client, responses, url := updateFixture(t, "windows")
 	data := t.TempDir()
 	marker := filepath.Join(data, "launcher-updates", "current.json")
-	previous := launcherUpdatePath(data, "0.7.5", "windows")
+	previous := launcherUpdatePath(data, "0.7.5")
 	prepareTestWrite(t, previous, []byte("previous launcher"))
 	if err := writeJSON(marker, cachedLauncher{"0.7.5", prepareDigest([]byte("previous launcher"))}); err != nil {
 		t.Fatal(err)
@@ -91,7 +88,7 @@ func TestFailedDownloadPreservesCachedVersion(t *testing.T) {
 	if _, err := fetchLauncherUpdate(context.Background(), client, data, "0.7.5", "windows", func(string) {}); err == nil {
 		t.Fatal("damaged download was accepted")
 	}
-	if cached, err := cachedLauncherUpdate(data, "0.7.3", "windows"); err != nil || cached != previous {
+	if cached, err := cachedLauncherUpdate(data, "0.7.3"); err != nil || cached != previous {
 		t.Fatalf("previous launcher was lost: %s, %v", cached, err)
 	}
 	partial, err := filepath.Glob(filepath.Join(data, "launcher-updates", ".download-*"))
@@ -133,20 +130,6 @@ func TestUpdateRejectsUntrustedReleaseMetadata(t *testing.T) {
 		responses[releaseAPI] = string(encoded)
 		if _, err := fetchLauncherUpdate(context.Background(), client, t.TempDir(), "0.7.3", "windows", func(string) {}); err == nil {
 			t.Fatal("untrusted metadata was accepted")
-		}
-	}
-}
-
-func TestLinuxUpdateRejectsExtraFilesAndSymlinks(t *testing.T) {
-	for _, content := range [][]byte{
-		prepareTestZip(t, map[string]string{"Root Six Player": "exe", "../outside": "bad"}, ""),
-		prepareTestZip(t, map[string]string{"Root Six Player": "../outside"}, "Root Six Player"),
-	} {
-		root := t.TempDir()
-		archive := filepath.Join(root, "download.zip")
-		prepareTestWrite(t, archive, content)
-		if err := extractLauncherUpdate(archive, filepath.Join(root, "launcher")); err == nil {
-			t.Fatal("unsafe Linux archive was accepted")
 		}
 	}
 }
@@ -199,8 +182,11 @@ func TestUnavailableReleaseKeepsInstalledLauncherUsable(t *testing.T) {
 }
 
 func TestCachedUpdateStartsWithoutNetwork(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only Windows uses cached executables")
+	}
 	data := t.TempDir()
-	path := launcherUpdatePath(data, "99.0.0", runtime.GOOS)
+	path := launcherUpdatePath(data, "99.0.0")
 	prepareTestWrite(t, path, []byte("cached launcher"))
 	if err := writeJSON(filepath.Join(data, "launcher-updates", "current.json"), cachedLauncher{"99.0.0", prepareDigest([]byte("cached launcher"))}); err != nil {
 		t.Fatal(err)
@@ -213,4 +199,12 @@ func TestCachedUpdateStartsWithoutNetwork(t *testing.T) {
 	if err != nil || got != path {
 		t.Fatalf("offline handoff failed: %s, %v", got, err)
 	}
+}
+
+func appImageFixture(extra string) []byte {
+	header := make([]byte, 64)
+	copy(header, "\x7fELF\x02\x01\x01")
+	copy(header[8:], "AI\x02")
+	binary.LittleEndian.PutUint16(header[18:], 62)
+	return append(header, extra...)
 }

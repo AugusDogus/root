@@ -5,6 +5,9 @@ from pathlib import Path
 import subprocess
 import time
 
+from appimage_package import appimage_name
+from launcher_release import VERSION
+
 PROJECT = Path(__file__).resolve().parents[1]
 
 
@@ -24,7 +27,7 @@ class NativeLauncherSession:
         for name in ('native-menu-ready', 'native-menu-screen', 'native-menu-interactive', 'session-status.json', 'session-command.txt'):
             (self.lab / 'client' / name).unlink(missing_ok=True)
         self.log = (self.lab / 'native-launcher-test.log').open('w')
-        self.launcher = subprocess.Popen([str(PROJECT / 'dist/Root Six Player'), '--headless',
+        self.launcher = subprocess.Popen([str(PROJECT / 'dist' / appimage_name(VERSION)), '--appimage-extract-and-run', '--headless',
                                          '--data', str(self.lab), '--test-menu', 'steam-online-test'],
                                         stdout=self.log, stderr=subprocess.STDOUT)
 
@@ -57,7 +60,7 @@ class NativeLauncherSession:
         assert not (self.lab / 'client/launcher-control.json').exists(), 'Control API credentials remain'
 
     def assert_running_game_is_protected(self):
-        retry = subprocess.run([str(PROJECT / 'dist/Root Six Player'), '--headless', '--prepare-only', '--data', str(self.lab)],
+        retry = subprocess.run([str(PROJECT / 'dist' / appimage_name(VERSION)), '--appimage-extract-and-run', '--headless', '--prepare-only', '--data', str(self.lab)],
                                capture_output=True, text=True, timeout=15)
         assert retry.returncode != 0 and 'already running' in retry.stderr, 'Launcher allowed setup while Root was running'
 

@@ -11,6 +11,14 @@ fallback font is copyright Bigelow & Holmes and uses a BSD license. Their
 notices follow below. Root's font and Steam artwork are read from the player's
 local installation and are not included in this distribution.
 
+Linux AppImages use the unmodified AppImage type-2 runtime release 20251108,
+commit dd6cebedcbddde9c82f89b011e8e1d40b6e43868. Its MIT license and linked
+library notices follow below. The runtime and libfuse 3.15.0 sources, including
+the upstream libfuse patch and build instructions, are included in
+dependency-sources.zip. These can be used to rebuild and replace the runtime
+with appimagetool's --runtime-file option. Packaging follows Compositor's
+pinned appimagetool 1.9.1 and runtime versions.
+
 Loader artifact:
 https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788%2B5b766a3.zip
 SHA-256: f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a

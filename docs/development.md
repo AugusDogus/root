@@ -19,7 +19,7 @@ python3 scripts/safe-test.py bash scripts/build-probe.sh
 python3 scripts/safe-test.py python3 scripts/package-launcher.py
 ```
 
-Building the current source produces `dist/root-six-player-0.7.4-windows.zip` and `dist/root-six-player-0.7.4-linux.zip`. Each ZIP contains one native Go executable, with BepInEx, its .NET runtime, matching Unity base libraries, the mod, and third-party notices embedded. Players need neither Python nor Go. Windows opens **Root Six Player.exe**; Linux opens **Root Six Player**. The launcher discovers Root in Steam, prepares two isolated copies automatically, generates bindings sequentially, opens Root's native menu, and exits. The mod manages the rules host, saved matches, and returning to the menu within the running game. There is no game selector, browser interface, or dependency download during player setup. Steam and Root must already be installed; Linux also needs Steam's Proton Experimental and Steam Linux Runtime 4.
+Building the current source produces a Windows EXE (also available in a ZIP) and a Linux AppImage. Each contains the native Go launcher, with BepInEx, its .NET runtime, matching Unity base libraries, the mod, and third-party notices embedded. Windows opens **Root Six Player.exe**; Linux opens **RootSixPlayer-0.7.5-x86_64.AppImage**. The launcher discovers Root in Steam, prepares two isolated copies automatically, generates bindings sequentially, opens Root's native menu, and exits. The mod manages the rules host, saved matches, and returning to the menu within the running game. There is no game selector, browser interface, or dependency download during player setup. Steam and Root must already be installed; Linux also needs Steam's Proton Experimental and Steam Linux Runtime 4.
 
 The launcher reuses the existing data folder and compatible saved matches when upgrading from the Python launcher. It refuses to overwrite an unknown modified mod file. Friends open **Join friends** before accepting an invite; Steam opens ordinary Root if the mod is closed. Python launcher modules remain solely as development adapters for older engine probes.
 
@@ -228,3 +228,23 @@ The host uses `TuberMatch` with `matchType=Live`, native JSON analyzers, and `Ob
 Tested stack: Unity 2022.3.62f2, Windows x64 IL2CPP, BepInEx 6.0.0-be.788+5b766a3, .NET SDK 10.0.401, Proton Experimental / Wine 11.0. The mod is tied to this game build and may break after an update. Each seat retains at most 8 MiB of serialized history, with absolute cursors and updates paginated below the 4 MiB transport limit. Lagging clients receive a private snapshot. A snapshot that exceeds the transport limit produces an explicit error. Normal player sessions have no fixed lifetime; development runs retain their time limits.
 
 The private match transport does not use Dire Wolf's multiplayer service. The unmodified game startup can still request public store/catalog data. These tests do not establish how the official multiplayer service enforces its four-player limit.
+
+## Linux packaging and updates
+
+Linux releases contain only an AppImage. The AppDir contains the launcher, icon,
+desktop entry, and AppRun. Tooling and the type-2 runtime are pinned by SHA-256
+in `scripts/appimage_package.py`. Packaging verifies the contents, version, and
+license export using the FUSE-free entry point.
+
+The updater verifies the release checksum, stages a replacement beside the
+original `APPIMAGE`, and atomically renames it into place before restarting.
+It confirms that `APPDIR` contains the running executable before trusting
+inherited AppImage environment variables. A failed download or staging operation
+preserves the old image. Linux has no extracted-executable update cache or ZIP
+fallback. Standalone users must switch to the AppImage manually.
+
+Windows retains a versioned executable cache because the running EXE is locked.
+Test whole-image replacement with `ROOT_APPIMAGE_TEST=/absolute/path/to.AppImage`
+and `go -C launcher-native test -run TestPackagedAppImageReplacement` under the
+normal test budget. `scripts/test-launcher-ui.py --appimage PATH` tests the
+packaged startup window on an isolated Xvfb display.

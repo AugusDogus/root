@@ -18,18 +18,22 @@ def main():
     parser.add_argument('--game', type=Path, required=True)
     parser.add_argument('--steam', type=Path, required=True)
     parser.add_argument('--isolated', action='store_true')
+    parser.add_argument('--appimage', type=Path, help='Exercise this packaged launcher instead of building a raw executable')
     args = parser.parse_args()
     output = Path(os.environ['ROOT_TEST_RUN_DIR'])
     binary = output / 'launcher-preview'
     if not args.isolated:
-        subprocess.run(['go', 'build', '-p', '1', '-o', str(binary), '.'], cwd=PROJECT / 'launcher-native',
-                       env=dict(os.environ, CGO_ENABLED='0', GOMAXPROCS='2'), check=True)
+        if args.appimage is None:
+            subprocess.run(['go', 'build', '-p', '1', '-o', str(binary), '.'], cwd=PROJECT / 'launcher-native',
+                           env=dict(os.environ, CGO_ENABLED='0', GOMAXPROCS='2'), check=True)
+        extra = ['--appimage', str(args.appimage.resolve())] if args.appimage else []
         subprocess.run(['xvfb-run', '--auto-servernum', '--server-args=-screen 0 1600x1000x24 -nolisten tcp',
-                        sys.executable, __file__, '--isolated', '--game', str(args.game), '--steam', str(args.steam)], check=True)
+                        sys.executable, __file__, '--isolated', '--game', str(args.game), '--steam', str(args.steam), *extra], check=True)
         return
 
     for name, game, steam in [('root-art', args.game, args.steam), ('fallback', output / 'missing', output / 'missing')]:
-        child = subprocess.Popen([str(binary), '--launcher-progress', str(game), str(steam)], stdin=subprocess.PIPE, text=True)
+        command = [str(args.appimage), '--appimage-extract-and-run'] if args.appimage else [str(binary)]
+        child = subprocess.Popen([*command, '--launcher-progress', str(game), str(steam)], stdin=subprocess.PIPE, text=True)
         try:
             deadline = time.monotonic() + 10
             window = None

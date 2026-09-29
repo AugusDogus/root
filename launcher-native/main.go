@@ -34,6 +34,9 @@ func main() {
 		if errors.As(err, &handoff) {
 			// run has closed its progress window and released the data lock.
 			command := exec.Command(handoff.executable, os.Args[1:]...)
+			if validateAppImage(handoff.executable) == nil {
+				command.Env = replaceEnvironment(os.Environ(), map[string]string{"APPIMAGE_EXTRACT_AND_RUN": "1"})
+			}
 			if err = command.Start(); err == nil {
 				_ = command.Process.Release()
 				return

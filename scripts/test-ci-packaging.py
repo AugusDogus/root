@@ -12,6 +12,7 @@ import unittest
 import urllib.error
 from unittest.mock import Mock, patch
 import zipfile
+from appimage_package import appimage_name
 
 import ci_generate_references as references
 import steam_ci
@@ -35,23 +36,28 @@ class ReleaseTests(unittest.TestCase):
         self.dist.mkdir()
         self.version = '1.2.3'
         self.windows = 'root-six-player-1.2.3-windows.zip'
-        self.linux = 'root-six-player-1.2.3-linux.zip'
-        for archive, binary in [(self.windows, 'Root Six Player.exe'), (self.linux, 'Root Six Player')]:
-            (self.dist / binary).write_bytes(b'executable fixture')
-            with zipfile.ZipFile(self.dist / archive, 'w') as output:
-                info = zipfile.ZipInfo(binary)
-                info.external_attr = 0o100755 << 16
-                output.writestr(info, (self.dist / binary).read_bytes())
+        self.appimage = appimage_name(self.version)
+        header = bytearray(64)
+        header[:7] = b'\x7fELF\x02\x01\x01'
+        header[8:11] = b'AI\x02'
+        header[18:20] = b'\x3e\x00'
+        (self.dist / self.appimage).write_bytes(header)
+        binary = 'Root Six Player.exe'
+        (self.dist / binary).write_bytes(b'executable fixture')
+        with zipfile.ZipFile(self.dist / self.windows, 'w') as output:
+            info = zipfile.ZipInfo(binary)
+            info.external_attr = 0o100755 << 16
+            output.writestr(info, (self.dist / binary).read_bytes())
         self.checksums()
 
     def checksums(self):
-        names = ['Root Six Player.exe', self.windows, self.linux]
+        names = ['Root Six Player.exe', self.windows, self.appimage]
         (self.dist / 'SHA256SUMS').write_text(''.join(f'{digest(self.dist / name)}  {name}\n' for name in names))
 
     def test_download_names_match_checksums(self):
         target = self.root / 'assets'
         release.stage_release(self.dist, target, self.version)
-        self.assertEqual({p.name for p in target.iterdir()}, {'RootSixPlayer.exe', self.windows, self.linux, 'SHA256SUMS'})
+        self.assertEqual({p.name for p in target.iterdir()}, {'RootSixPlayer.exe', self.windows, self.appimage, 'SHA256SUMS'})
         for line in (target / 'SHA256SUMS').read_text().splitlines():
             checksum, name = line.split('  ', 1)
             self.assertEqual(digest(target / name), checksum)
@@ -61,8 +67,14 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed after packaging'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
+    def test_non_appimage_rejected_even_with_valid_checksum(self):
+        (self.dist / self.appimage).write_bytes(b'not an AppImage')
+        self.checksums()
+        with self.assertRaisesRegex(ValueError, 'type-2 AppImage'):
+            release.stage_release(self.dist, self.root / 'assets', self.version)
+
     def test_extra_game_files_rejected_even_with_valid_checksums(self):
-        with zipfile.ZipFile(self.dist / self.linux, 'a') as output:
+        with zipfile.ZipFile(self.dist / self.windows, 'a') as output:
             output.writestr('GameAssembly.dll', b'private')
         self.checksums()
         with self.assertRaisesRegex(ValueError, 'must contain only'):
@@ -74,14 +86,11 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'different executable'):
             release.stage_release(self.dist, self.root / 'assets', self.version)
 
-    def test_linux_executable_permission_required(self):
-        with zipfile.ZipFile(self.dist / self.linux, 'w') as output:
-            info = zipfile.ZipInfo('Root Six Player')
-            info.external_attr = 0o100644 << 16
-            output.writestr(info, b'executable fixture')
-        self.checksums()
-        with self.assertRaisesRegex(ValueError, 'executable permission'):
-            release.stage_release(self.dist, self.root / 'assets', self.version)
+    def test_appimage_is_staged_as_executable(self):
+        target = self.root / 'assets'
+        release.stage_release(self.dist, target, self.version)
+        if os.name != 'nt':
+            self.assertTrue(os.access(target / self.appimage, os.X_OK))
 
     def test_tag_must_match_source(self):
         with self.assertRaisesRegex(ValueError, 'Release tag must'):

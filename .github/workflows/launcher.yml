@@ -87,7 +87,7 @@ jobs:
       - name: Install SteamCMD dependencies and Windows icon compiler
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends lib32gcc-s1 bubblewrap binutils-mingw-w64-x86-64
+          sudo apt-get install -y --no-install-recommends lib32gcc-s1 bubblewrap binutils-mingw-w64-x86-64 desktop-file-utils
       - name: Download supported Root build
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
@@ -104,10 +104,8 @@ jobs:
           python scripts/package-native-launcher.py --github-hosted
           python scripts/launcher_release.py --output dist/release-assets
           expected=$(python scripts/launcher_release.py)
-          test "$(dist/'Root Six Player' --headless --version)" = "$expected"
-          dist/'Root Six Player' --headless --licenses .lab/ci-notices
-          test -s .lab/ci-notices/THIRD-PARTY-NOTICES.txt
-          test -s .lab/ci-notices/dependency-sources.zip
+          ROOT_APPIMAGE_TEST="$GITHUB_WORKSPACE/dist/RootSixPlayer-$expected-x86_64.AppImage" \
+            go -C launcher-native test -p 1 -run TestPackagedAppImageReplacement -v
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: launcher-${{ github.sha }}

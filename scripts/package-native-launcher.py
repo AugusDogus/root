@@ -17,6 +17,7 @@ import zipfile
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
 from test_budget import require_test_budget
+from appimage_package import build_appimage, check_appimage
 
 VERSION = '0.7.4'
 GAME_BUILD = '22238765'
@@ -155,24 +156,22 @@ def build(go):
             if resource is not None:
                 resource.unlink(missing_ok=True)
         executables[platform] = target
-    outputs = []
-    for platform, executable in executables.items():
-        target = WORK / f'root-six-player-{VERSION}-{platform}.zip'
-        with zipfile.ZipFile(target, 'w') as archive:
-            add_file(archive, executable, executable.name, executable=platform == 'linux')
-        outputs.append(target)
-    outputs.insert(0, executables['windows'])
-    # Publish only after both cross-compilations succeeded. No Python or shell
-    # entrypoints, loose dependencies, or copied game files enter these ZIPs.
+    windows = executables['windows']
+    archive_path = WORK / f'root-six-player-{VERSION}-windows.zip'
+    with zipfile.ZipFile(archive_path, 'w') as archive:
+        add_file(archive, windows, windows.name)
+    outputs = [windows, archive_path]
+    appimage = build_appimage(PROJECT, WORK, executables['linux'], VERSION, verified_archive)
+    check_appimage(appimage, executables['linux'], VERSION, sha256)
+    outputs.append(appimage)
+    # Publish only after both platforms and the AppImage checks succeed.
     for path in outputs:
         temporary = DIST / (path.name + '.tmp')
         shutil.copyfile(path, temporary)
+        if path == appimage:
+            temporary.chmod(0o755)
         temporary.replace(DIST / path.name)
         print(f'{path.name}: {path.stat().st_size / 1024**2:.1f} MiB', flush=True)
-    linux = DIST / 'Root Six Player.tmp'
-    shutil.copyfile(executables['linux'], linux)
-    linux.chmod(0o755)
-    linux.replace(DIST / 'Root Six Player')
     checksums = ''.join(f'{sha256(path)}  {path.name}\n' for path in outputs)
     (DIST / 'SHA256SUMS.tmp').write_text(checksums)
     (DIST / 'SHA256SUMS.tmp').replace(DIST / 'SHA256SUMS')

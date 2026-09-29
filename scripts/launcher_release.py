@@ -4,9 +4,9 @@ import hashlib
 from pathlib import Path
 import re
 import shutil
-import stat
 import sys
 import zipfile
+from appimage_package import appimage_name, validate_appimage
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / 'launcher'))
@@ -30,7 +30,7 @@ def validate_version(project, version, tag=None):
 
 
 def stage_release(dist, destination, version):
-    names = ['Root Six Player.exe', f'root-six-player-{version}-windows.zip', f'root-six-player-{version}-linux.zip']
+    names = ['Root Six Player.exe', f'root-six-player-{version}-windows.zip', appimage_name(version)]
     lines = [line.split('  ', 1) for line in (dist / 'SHA256SUMS').read_text().splitlines()]
     if len(lines) != len(names) or any(len(line) != 2 for line in lines):
         raise ValueError('Release checksums must describe exactly the three player assets.')
@@ -41,20 +41,21 @@ def stage_release(dist, destination, version):
         with (dist / name).open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != expected[name]:
                 raise ValueError(f'{name} changed after packaging. Rebuild before uploading.')
-    for name, executable in [(names[1], names[0]), (names[2], 'Root Six Player')]:
-        with zipfile.ZipFile(dist / name) as package:
-            if package.namelist() != [executable]:
-                raise ValueError(f'{name} must contain only {executable}.')
-            if executable == 'Root Six Player' and not package.getinfo(executable).external_attr >> 16 & stat.S_IXUSR:
-                raise ValueError('The Linux ZIP lost its executable permission. Rebuild before uploading.')
-            with package.open(executable) as stream, (dist / executable).open('rb') as binary:
-                if hashlib.file_digest(stream, 'sha256').digest() != hashlib.file_digest(binary, 'sha256').digest():
-                    raise ValueError(f'{name} contains a different executable. Rebuild the packages.')
+    name, executable = names[1], names[0]
+    with zipfile.ZipFile(dist / name) as package:
+        if package.namelist() != [executable]:
+            raise ValueError(f'{name} must contain only {executable}.')
+        with package.open(executable) as stream, (dist / executable).open('rb') as binary:
+            if hashlib.file_digest(stream, 'sha256').digest() != hashlib.file_digest(binary, 'sha256').digest():
+                raise ValueError(f'{name} contains a different executable. Rebuild the packages.')
+    validate_appimage(dist / names[2])
     destination.mkdir(parents=True, exist_ok=False)
     sums = []
     for name in names:
         target = destination / ('RootSixPlayer.exe' if name == names[0] else name)
         shutil.copyfile(dist / name, target)
+        if name == names[2]:
+            target.chmod(0o755)
         sums.append(f'{expected[name]}  {target.name}\n')
     (destination / 'SHA256SUMS').write_text(''.join(sums))
 

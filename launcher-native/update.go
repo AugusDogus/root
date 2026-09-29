@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -24,12 +23,8 @@ type cachedLauncher struct {
 	SHA256  string `json:"sha256"`
 }
 
-func launcherUpdatePath(data, version, platform string) string {
-	name := "RootSixPlayer"
-	if platform == "windows" {
-		name += ".exe"
-	}
-	return filepath.Join(data, "launcher-updates", version, name)
+func launcherUpdatePath(data, version string) string {
+	return filepath.Join(data, "launcher-updates", version, "RootSixPlayer.exe")
 }
 
 func launcherFileDigest(path string) (string, error) {
@@ -43,7 +38,7 @@ func launcherFileDigest(path string) (string, error) {
 		return "", err
 	}
 	if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxUpdateSize {
-		return "", fmt.Errorf("cached launcher is not a regular file under 320 MiB")
+		return "", fmt.Errorf("launcher is not a regular file under 320 MiB")
 	}
 	hash := sha256.New()
 	if _, err := io.Copy(hash, io.LimitReader(file, maxUpdateSize+1)); err != nil {
@@ -52,7 +47,7 @@ func launcherFileDigest(path string) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-func cachedLauncherUpdate(data, current, platform string) (string, error) {
+func cachedLauncherUpdate(data, current string) (string, error) {
 	var cached cachedLauncher
 	err := readJSON(filepath.Join(data, "launcher-updates", "current.json"), &cached)
 	if errors.Is(err, os.ErrNotExist) {
@@ -72,7 +67,7 @@ func cachedLauncherUpdate(data, current, platform string) (string, error) {
 	if !version.newerThan(running) {
 		return "", nil
 	}
-	path := launcherUpdatePath(data, cached.Version, platform)
+	path := launcherUpdatePath(data, cached.Version)
 	digest, err := launcherFileDigest(path)
 	if err != nil {
 		return "", err
@@ -83,8 +78,8 @@ func cachedLauncherUpdate(data, current, platform string) (string, error) {
 	return path, nil
 }
 
-// Stage beside the currently running launcher. Windows locks running EXEs;
-// using versioned files also preserves the last working binary on both OSes.
+// Linux replaces the running AppImage. Windows locks running EXEs, so it
+// stages the replacement in a versioned directory.
 func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current, platform string, progress func(string)) (string, error) {
 	release, err := latestLauncherRelease(ctx, client)
 	if err != nil {
@@ -104,7 +99,7 @@ func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current
 	}
 	name := "RootSixPlayer.exe"
 	if platform == "linux" {
-		name = "root-six-player-" + version + "-linux.zip"
+		name = "RootSixPlayer-" + version + "-x86_64.AppImage"
 	} else if platform != "windows" {
 		return "", fmt.Errorf("automatic updates are not available for %s", platform)
 	}
@@ -152,19 +147,21 @@ func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current
 		return "", fmt.Errorf("downloaded launcher failed its release checksum check")
 	}
 	progress("Installing Root Six Player " + version + "...")
-	target := launcherUpdatePath(data, version, platform)
-	executable := filepath.Join(stage, filepath.Base(target))
 	if platform == "linux" {
-		if err := extractLauncherUpdate(archive, executable); err != nil {
+		installed, err := runningAppImage()
+		if err != nil {
 			return "", err
 		}
-	} else if err := os.Rename(archive, executable); err != nil {
-		return "", err
+		if installed == "" {
+			return "", fmt.Errorf("Linux updates require the AppImage launcher. Download it from GitHub Releases and open it")
+		}
+		if err := replaceAppImage(archive, installed, expected); err != nil {
+			return "", err
+		}
+		return installed, nil
 	}
-	digest, err = launcherFileDigest(executable)
-	if err != nil {
-		return "", err
-	}
+	target := launcherUpdatePath(data, version)
+	executable := archive
 	if err := os.Chmod(executable, 0700); err != nil {
 		return "", err
 	}
@@ -180,32 +177,6 @@ func fetchLauncherUpdate(ctx context.Context, client *http.Client, data, current
 	return target, nil
 }
 
-func extractLauncherUpdate(archive, target string) error {
-	reader, err := zip.OpenReader(archive)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	if len(reader.File) != 1 || reader.File[0].Name != "Root Six Player" || !reader.File[0].Mode().IsRegular() || reader.File[0].UncompressedSize64 > uint64(maxUpdateSize) {
-		return fmt.Errorf("Linux update must contain only the launcher executable")
-	}
-	input, err := reader.File[0].Open()
-	if err != nil {
-		return err
-	}
-	defer input.Close()
-	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
-	if err != nil {
-		return err
-	}
-	written, err := io.Copy(output, io.LimitReader(input, maxUpdateSize+1))
-	err = errors.Join(err, output.Close())
-	if written > maxUpdateSize {
-		return fmt.Errorf("extracted launcher exceeds 320 MiB")
-	}
-	return err
-}
-
 func launcherUpdate(ctx context.Context, data string, progress func(string)) (string, error) {
 	if runtime.GOARCH != "amd64" {
 		return "", nil
@@ -214,12 +185,14 @@ func launcherUpdate(ctx context.Context, data string, progress func(string)) (st
 }
 
 func launcherUpdateWithClient(ctx context.Context, client *http.Client, data string, progress func(string)) (string, error) {
-	cached, err := cachedLauncherUpdate(data, Version, runtime.GOOS)
-	if err != nil {
-		return "", fmt.Errorf("The saved launcher update could not be verified. Delete %s, then open a freshly downloaded launcher. Saved matches are outside that folder and are unchanged: %w", filepath.Join(data, "launcher-updates"), err)
-	}
-	if cached != "" {
-		return cached, nil
+	if runtime.GOOS == "windows" {
+		cached, err := cachedLauncherUpdate(data, Version)
+		if err != nil {
+			return "", fmt.Errorf("The saved launcher update could not be verified. Delete %s, then open a freshly downloaded launcher. Saved matches are outside that folder and are unchanged: %w", filepath.Join(data, "launcher-updates"), err)
+		}
+		if cached != "" {
+			return cached, nil
+		}
 	}
 	progress("Checking for updates...")
 	updated, err := fetchLauncherUpdate(ctx, client, data, Version, runtime.GOOS, progress)

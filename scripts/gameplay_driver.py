@@ -20,6 +20,10 @@ def choose(selection, rng, undo_ids):
             undo_ids.add(source)
     if not value['forced'] and ('.undo.' in prompt or prompt.endswith(('.ChooseDecrees', '.NoActions'))):
         return {**request, 'op': 'pass'}
+    # Optional phases can keep offering sources after an attempted action.
+    # Exercise their Skip/Continue choice too, rather than retrying forever.
+    if not value['forced'] and not value.get('ignoreFirst', False) and rng.randrange(4) == 0:
+        return {**request, 'op': 'pass'}
     candidates = []
     for source, information in value['targetMap'].items():
         if any(item.get('targetPrompt', {}).get('id') == 'undoAbility.prompt' or 'Undo' in item.get('overrideKind', '') for item in information):

@@ -26,7 +26,11 @@ internal abstract record TargetChoice
             var valid = target.ValidTargets.Select(id => id.ToString()).GroupBy(id => id)
                 .ToDictionary(group => group.Key, group => group.Count());
             var maximum = Math.Min(target.NumberToSelect, target.ValidTargets.Length);
-            var minimum = target.Forced ? maximum : target.MinimumToSelect;
+            // Root permits an empty response for optional targets, even when
+            // MinimumToSelect is nonzero (cancel movement, finish discarding).
+            // A forced target uses its explicit minimum, or -1 for the maximum.
+            var minimum = !target.Forced ? 0 : target.MinimumToSelect == -1
+                ? maximum : Math.Min(target.MinimumToSelect, target.ValidTargets.Length);
             return Values.Length >= minimum && Values.Length <= maximum &&
                 Values.GroupBy(id => id).All(group => valid.TryGetValue(group.Key, out var count) && group.Count() <= count)
                 ? ChoiceResult.Accepted : ChoiceResult.InvalidTarget;

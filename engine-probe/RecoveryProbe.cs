@@ -13,7 +13,9 @@ internal static class RecoveryProbe
         {
             if (Environment.GetEnvironmentVariable("ROOT_LAB_RECOVERY_FIXTURE") is { } fixture)
             {
-                ExploreRecoveryProbe.Run(fixture, output);
+                if (Environment.GetEnvironmentVariable("ROOT_LAB_RECOVERY_ACTION") == "discard-continue")
+                    DiscardRecoveryProbe.Run(fixture, output);
+                else ExploreRecoveryProbe.Run(fixture, output);
                 UnityEngine.Application.Quit();
                 return;
             }

@@ -18,6 +18,10 @@ the CI toolchain upgrade does not update the runtime shipped to players.
   the tag is the release action. It becomes the latest release so the README's
   download link resolves to it. Existing releases are never overwritten.
 
+Changes limited to Markdown files or `docs/` skip push and pull-request runs.
+`RELEASE.md` still triggers checks because its version header is validated.
+Version tags and manual runs always run, regardless of changed paths.
+
 Player assets are `RootSixPlayer-<version>-Setup.exe`,
 `RootSixPlayer-<version>-x86_64.AppImage`, and `SHA256SUMS`. The Windows installer
 installs per user and creates a Start menu shortcut. Linux users run the AppImage.

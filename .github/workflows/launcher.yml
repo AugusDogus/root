@@ -2,9 +2,20 @@ name: Launcher
 
 on:
   pull_request:
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - 'RELEASE.md' # The release validator checks its version header.
   push:
     branches: [main]
     tags: ['v*']
+    # Path filters apply to branch pushes, not version tags.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - 'RELEASE.md'
   workflow_dispatch:
 
 permissions:

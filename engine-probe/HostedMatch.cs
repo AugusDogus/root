@@ -216,9 +216,11 @@ internal sealed class HostedMatch
         var selection = Thread.GetPlayerPendingResponse(counter).Item2.Selection.TryCast<SelectionWithTargetsRequired>();
         if (selection is null || selection.SourceID is null || selection.TargetMap is null)
             return null;
-        if (selection.TargetMap.TryGetValue(selection.SourceID, out var information) == false || information.Length != 1)
+        if (selection.TargetMap.TryGetValue(selection.SourceID, out var information) == false)
             return null;
-        var targets = information[0].TryCast<EntityListTargetInformation>();
+        var selected = information.Where(target => target.Selected).ToArray();
+        if (selected.Length != 1) return null;
+        var targets = selected[0].TryCast<EntityListTargetInformation>();
         if (targets is null || targets.NumberToSelect != 1)
             return null;
         return new SelectionOffer(counter, selection.Prompt.ID, selection.SourceID.ToString(),

@@ -55,7 +55,8 @@ internal static class SetupProbe
                     {
                         foreach (var pair in required.TargetMap)
                         {
-                            if (pair.Value.Length != 1 || pair.Value[0].TryCast<Networking.selection.targetinformation.EntityListTargetInformation>()
+                            var selected = pair.Value.Where(target => target.Selected).ToArray();
+                            if (selected.Length != 1 || selected[0].TryCast<Networking.selection.targetinformation.EntityListTargetInformation>()
                                 is not { NumberToSelect: 1, ValidTargets.Length: > 0 } target) continue;
                             result = host.Choose(seat, counter, pair.Key.ToString(), target.ValidTargets[0].ToString());
                             break;

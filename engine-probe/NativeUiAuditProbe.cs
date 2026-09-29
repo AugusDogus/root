@@ -61,7 +61,11 @@ internal static class NativeUiAuditProbe
                 .Select(item => new { item.name, active = item.gameObject.activeInHierarchy,
                     position = item.transform.TryCast<RectTransform>()?.anchoredPosition.ToString(),
                     bounds = Rectangle(item.transform.TryCast<RectTransform>()),
-                    drawer = Rectangle(item.transform.parent?.TryCast<RectTransform>()) }).ToArray(),
+                    drawer = Rectangle(item.transform.parent?.TryCast<RectTransform>()),
+                    actions = Rectangle(item.transform.parent?.parent?.parent?.Find("ActionContainer")?.TryCast<RectTransform>()),
+                    cards = item.transform.parent?.parent?.parent?.Find("Hand")?.GetComponentsInChildren<lotus.UnitView>()
+                        .Where(view => view.gameObject.activeInHierarchy)
+                        .Select(view => Rectangle(view.transform.TryCast<RectTransform>())).ToArray() }).ToArray(),
             itemSelection = items == null ? null : new
             {
                 choices = items.Prompt.Choices.Count,

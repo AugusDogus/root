@@ -168,9 +168,14 @@ def main():
                 for satchel in satchels:
                     bounds, drawer = satchel['bounds'], satchel['drawer']
                     assert bounds['left'] >= drawer['right'], satchel
-                    assert bounds['bottom'] >= drawer['top'], satchel
+                    assert abs(bounds['bottom'] - drawer['bottom']) <= 2, satchel
                     assert 0 <= bounds['bottom'] < bounds['top'] <= height, satchel
                     assert 0 <= bounds['left'] < bounds['right'] <= width, satchel
+                    cards = [card for card in satchel['cards'] or [] if card]
+                    assert cards, 'Fixture must show cards beside the inventory'
+                    for card in cards:
+                        assert card['left'] >= bounds['right'], (satchel, card)
+                        assert card['right'] <= satchel['actions']['left'], (satchel, card)
             command('settings')
             wait('native settings', lambda: state().get('settingsOpen'), 30)
             command('native-resign')

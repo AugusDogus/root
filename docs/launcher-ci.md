@@ -89,6 +89,31 @@ Local builds still use `scripts/safe-test.py`. The packaging and CI preparation 
 `--github-hosted` mode, which checks the GitHub-hosted runner environment. Game
 tests retain the desktop resource guards.
 
+## Startup window
+
+Windows and Linux use the same Go-rendered startup window. A short-lived child
+of the launcher owns the native event loop and receives status through stdin.
+It exits when preparation finishes. Linux uses X11, including XWayland on
+Wayland desktops. No Root process is needed to show the window.
+
+The window reads Root's logo and forest illustration from Steam's artwork
+cache. The original Baskerville font is read from the supported game's
+`resources.assets`, using a pinned byte range and SHA-256 check. Missing artwork
+or a changed font uses a plain background and bundled Go font. Updates to the
+supported game build should recheck that font range. Extracted game assets are
+never committed or bundled.
+
+To test rendering and shutdown without opening Root:
+
+```sh
+python3 scripts/safe-test.py python3 scripts/test-launcher-ui.py \
+  --game '/path/to/steamapps/common/Root' --steam '/path/to/Steam'
+```
+
+The test creates a dedicated Xvfb display and captures normal, scaled, and
+missing-artwork states under its test-run directory. Windows CI exercises the
+native window lifecycle separately.
+
 CI verifies packaging, native launcher tests on both operating systems, protocol
 logic, and notice extraction from both executables. It does not verify native
 Windows gameplay, Steam invitations between accounts, or the complete game UI.

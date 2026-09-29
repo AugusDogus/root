@@ -22,7 +22,7 @@ func TestWindowsNativeProgressLifecycle(t *testing.T) {
 	defer closeWindow()
 	go func() {
 		defer close(finished)
-		runProgressWindow(updates, stop, ready)
+		runProgressWindow(loadLauncherTheme("", ""), updates, stop, ready)
 	}()
 	select {
 	case err := <-ready:

@@ -103,5 +103,40 @@
     "name": "Capstone",
     "url": "https://raw.githubusercontent.com/ds5678/Capstone.NET/b90e380c14e857865c94a355954236e678bd557c/Gee.External.Capstone/runtimes/LICENSE.TXT",
     "sha256": "65e9ed46a59976eda8f5bd1ea79a680dea38dd299c760bc9a8d87a764ef5029b"
+  },
+  {
+    "name": "Go-shiny",
+    "url": "https://raw.githubusercontent.com/golang/exp/054e65f0b394/LICENSE",
+    "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+  },
+  {
+    "name": "Go-image",
+    "url": "https://raw.githubusercontent.com/golang/image/v0.25.0/LICENSE",
+    "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+  },
+  {
+    "name": "Go-mobile",
+    "url": "https://raw.githubusercontent.com/golang/mobile/76ac6878050a/LICENSE",
+    "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+  },
+  {
+    "name": "Go-sys",
+    "url": "https://raw.githubusercontent.com/golang/sys/v0.15.0/LICENSE",
+    "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+  },
+  {
+    "name": "Go-text",
+    "url": "https://raw.githubusercontent.com/golang/text/v0.23.0/LICENSE",
+    "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+  },
+  {
+    "name": "XGB",
+    "url": "https://raw.githubusercontent.com/jezek/xgb/v1.1.1/LICENSE",
+    "sha256": "2566d7f8d69e655b718d344d740ffde59543e6a337abed114b6fbaf6ec4e27f3"
+  },
+  {
+    "name": "Go-fonts",
+    "url": "https://raw.githubusercontent.com/golang/image/v0.25.0/font/gofont/ttfs/README",
+    "sha256": "dc588a7ba9130043b67c2380cc03cc6644ed3557f6d5e8589b96acba1c64e343"
   }
 ]

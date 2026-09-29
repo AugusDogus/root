@@ -5,6 +5,12 @@ distribution 6.0.0-be.788, commit 5b766a3b7f6c164d4798924a93f3acf4db769d06.
 The same Windows loader is used with Steam Proton on Linux. Root game files,
 Steam, Proton, and generated game bindings are not distributed in the launcher.
 
+The startup window uses golang.org/x/exp/shiny, x/image, x/mobile, x/sys,
+x/text, and github.com/jezek/xgb under their BSD licenses. The Go Regular
+fallback font is copyright Bigelow & Holmes and uses a BSD license. Their
+notices follow below. Root's font and Steam artwork are read from the player's
+local installation and are not included in this distribution.
+
 Loader artifact:
 https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788%2B5b766a3.zip
 SHA-256: f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a

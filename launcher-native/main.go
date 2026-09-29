@@ -24,6 +24,10 @@ var embedded embed.FS
 var reportError = showError
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "--launcher-progress" {
+		progressChild(os.Args[2], os.Args[3])
+		return
+	}
 	if err := run(); err != nil {
 		log.Print(err)
 		reportError("Root Six Player could not open.\n\n" + err.Error() + "\n\nYour Steam installation and saved matches have not been removed.")
@@ -117,7 +121,7 @@ func run() (result error) {
 	defer cancel()
 	progress := func(message string) { log.Print(message) }
 	if !*headless {
-		update, closeWindow := OpenProgress()
+		update, closeWindow := OpenProgress(inst)
 		defer closeWindow()
 		progress = func(message string) { log.Print(message); update(message) }
 	}

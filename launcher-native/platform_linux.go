@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -248,48 +247,4 @@ func showError(message string) {
 	if _, err := exec.LookPath("zenity"); err == nil {
 		_ = exec.Command("zenity", "--error", "--no-markup", "--title=Root Six Player", "--text="+message, "--width=460").Run()
 	}
-}
-
-func OpenProgress() (func(string), func()) {
-	fallback := func(message string) { fmt.Fprintln(os.Stderr, message) }
-	if _, err := exec.LookPath("zenity"); err != nil {
-		return fallback, func() {}
-	}
-	cmd := exec.Command("zenity", "--progress", "--pulsate", "--auto-close", "--no-cancel", "--no-markup", "--title=Root Six Player", "--text=Preparing Root", "--width=420")
-	pipe, err := cmd.StdinPipe()
-	if err != nil {
-		return fallback, func() {}
-	}
-	if err := cmd.Start(); err != nil {
-		pipe.Close()
-		return fallback, func() {}
-	}
-	done := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(done) }()
-	var mu sync.Mutex
-	closed := false
-	return func(message string) {
-			mu.Lock()
-			defer mu.Unlock()
-			if !closed {
-				if _, err := fmt.Fprintln(pipe, "# "+strings.ReplaceAll(message, "\n", " ")); err != nil {
-					fallback(message)
-				}
-			}
-		}, func() {
-			mu.Lock()
-			if closed {
-				mu.Unlock()
-				return
-			}
-			closed = true
-			pipe.Close()
-			mu.Unlock()
-			select {
-			case <-done:
-			case <-time.After(2 * time.Second):
-				_ = cmd.Process.Kill()
-				<-done
-			}
-		}
 }

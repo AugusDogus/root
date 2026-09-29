@@ -19,18 +19,27 @@ internal static class SelectionValidationProbe
         {
             var ids = Enumerable.Range(0, 3).Select(_ => new EntityID(Guid.NewGuid().ToString())).ToArray();
             foreach (var forced in new[] { false, true })
-            foreach (var minimum in new[] { -1, 0, 1, 2 })
-            for (var count = 0; count <= 2; count++)
+            foreach (var minimum in new[] { -1, 0, 1, 2, 4 })
+            foreach (var maximum in new[] { 0, 1, 2, 4 })
+            foreach (var offered in new[] { Array.Empty<EntityID>(), ids.Take(1).ToArray(), ids, new[] { ids[0], ids[0], ids[1] } })
+            for (var count = 0; count <= offered.Length; count++)
             {
                 var information = new EntityListTargetInformation
-                { ValidTargets = ids, NumberToSelect = 2, MinimumToSelect = minimum, Forced = forced };
+                { ValidTargets = offered, NumberToSelect = maximum, MinimumToSelect = minimum, Forced = forced };
                 var following = new Il2CppSystem.Collections.Generic.List<TargetInformation>();
                 var node = new EntityListTargetNode(null, information, false, null, null,
                     following.Cast<Il2CppSystem.Collections.Generic.IEnumerable<TargetInformation>>(), "optional-target-probe");
-                foreach (var id in ids.Take(count)) node.Select(id);
-                var actual = new TargetChoice.Entities(ids.Take(count).Select(id => id.ToString()).ToArray()).Validate(information);
-                if ((actual == ChoiceResult.Accepted) != node.satisfied)
-                    failures.Add($"Entity choice forced={forced} minimum={minimum} count={count}: native={node.satisfied}, host={actual}");
+                var available = true;
+                foreach (var id in offered.Take(count))
+                {
+                    if (node.AvailableSelections.IndexOf(id) < 0) { available = false; break; }
+                    node.Select(id);
+                }
+                var actual = new TargetChoice.Entities(offered.Take(count).Select(id => id.ToString()).ToArray()).Validate(information);
+                var nativeAccepts = available && node.satisfied;
+                if ((actual == ChoiceResult.Accepted) != nativeAccepts)
+                    failures.Add($"Entity choice forced={forced} minimum={minimum} maximum={maximum} offered={offered.Length} count={count}: native={nativeAccepts}, host={actual}");
+                results.Add(new { kind = "entities", forced, minimum, maximum, offered = offered.Length, count, nativeAccepts, ours = actual.ToString() });
             }
             var attributed = new CustomChoiceWithAttributesTargetInformation
             {

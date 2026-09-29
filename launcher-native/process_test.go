@@ -48,7 +48,7 @@ func TestProbeRequiresHeadlessModeBeforeLaunch(t *testing.T) {
 
 func TestEveryGameModeDisablesBepInExConsole(t *testing.T) {
 	for _, mode := range []string{"bootstrap", "server", "steam-menu", "steam-host", "steam-client", "steam-wait", "steam-online-test", "steam-menu-test"} {
-		args := gameArguments(t.TempDir(), mode, false)
+		args := gameArguments(t.TempDir(), mode, false, false)
 		found := false
 		for index, value := range args {
 			if value == "--enable-console" && index+1 < len(args) && args[index+1] == "false" {
@@ -58,5 +58,19 @@ func TestEveryGameModeDisablesBepInExConsole(t *testing.T) {
 		if !found {
 			t.Fatalf("mode %s can allocate a BepInEx console", mode)
 		}
+	}
+}
+
+func TestPlayerLaunchPreservesDisplayPreferences(t *testing.T) {
+	for _, mode := range []string{"steam-menu", "steam-host", "steam-client", "steam-wait"} {
+		for _, arg := range gameArguments(t.TempDir(), mode, false, false) {
+			if strings.HasPrefix(arg, "-screen-") {
+				t.Fatalf("%s overrides saved display preferences with %s", mode, arg)
+			}
+		}
+	}
+	args := strings.Join(gameArguments(t.TempDir(), "steam-menu-test", true, true), " ")
+	if !strings.Contains(args, "-screen-fullscreen 0 -screen-width 1280 -screen-height 800") {
+		t.Fatal("isolated UI tests lost their fixed display size")
 	}
 }

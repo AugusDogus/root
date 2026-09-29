@@ -18,7 +18,7 @@ type GameOptions struct {
 
 func validateTestMode(headless bool) error { return checkLaunchBudget(headless) }
 
-func gameArguments(output, mode string, muted bool) []string {
+func gameArguments(output, mode string, muted, headless bool) []string {
 	// BepInEx can explicitly allocate a console even for a GUI child process.
 	// Its own command-line override keeps that console disabled in every mode.
 	args := []string{"--enable-console", "false", "-logFile", filepath.Join(output, "player.log")}
@@ -28,7 +28,10 @@ func gameArguments(output, mode string, muted bool) []string {
 	if mode == "server" || mode == "bootstrap" {
 		return append(args, "-batchmode", "-nographics", "-noaudio")
 	}
-	return append(args, "-screen-fullscreen", "0", "-screen-width", "1280", "-screen-height", "800")
+	if headless {
+		return append(args, "-screen-fullscreen", "0", "-screen-width", "1280", "-screen-height", "800")
+	}
+	return args
 }
 
 type GameProcess struct {
@@ -127,7 +130,7 @@ func StartGame(inst Installation, dataRole string, mode string, opts GameOptions
 			return nil, err
 		}
 	}
-	args := gameArguments(output, mode, os.Getenv("ROOT_FRIENDS_MUTE") == "1")
+	args := gameArguments(output, mode, os.Getenv("ROOT_FRIENDS_MUTE") == "1", opts.Headless)
 	cmd, proton, err := platformGameCommand(inst, lab, args, gameEnvironment(mode, opts), opts.Headless)
 	if err != nil {
 		return nil, err

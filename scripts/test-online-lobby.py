@@ -136,6 +136,7 @@ def main():
                 click_client(180, 425)
                 wait(lambda: native_state('visual.json').get('visibleFigures') == 6,
                      30, name='reopen six-seat setup after leaving lobby')
+                assert native_state('visual.json')['controllers'][4:] == controllers[4:], 'Added seats forgot their AI controllers'
                 command(json.dumps({'controllers': [0, 1, 1, 1, 1, 1], 'factions': [0, 1, 2, 3, 6, 7]}))
                 capture('online-setup-after-back.png')
                 click_client(1090, 765)

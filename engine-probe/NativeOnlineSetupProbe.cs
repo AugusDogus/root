@@ -107,6 +107,8 @@ public sealed class NativeOnlineSetupProbe : MonoBehaviour
                 File.WriteAllText(Path.Combine(Output, "visual.json"), System.Text.Json.JsonSerializer.Serialize(new
                 {
                     slots = view.playerSlots.Length,
+                    controllers = Enumerable.Range(0, view.Prompt.PlayerSlots.Count)
+                        .Select(index => (int)view.Prompt.PlayerSlots[index].GetOne<tuber.client.data.PlayerTypeData>().Type).ToArray(),
                     visibleFigures = figures.Count(figure => figure.GetComponentsInChildren<Renderer>().Any(renderer => renderer.isVisible)),
                     title = view.GetComponentsInChildren<TMPro.TMP_Text>(true).FirstOrDefault(item => item.name == "HeaderText")?.text
                 }));

@@ -77,7 +77,10 @@ internal sealed class NativeOnlineSetupFlow
         if (patched) return;
         var harmony = new Harmony("local.root.native-online-setup");
         harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "initialize"),
-            prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ExtendView)));
+            prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ExtendView)),
+            postfix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(RestoreAdditionalSeats)));
+        harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "OnDestroy"),
+            prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(SaveAdditionalSeats)));
         harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "Event_Back"),
             prefix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(Back)));
         harmony.Patch(AccessTools.Method(typeof(ConfigureOnlineGamePromptBehaviour), "Event_ResetToDefault"),
@@ -87,6 +90,20 @@ internal sealed class NativeOnlineSetupFlow
         harmony.Patch(AccessTools.Method(typeof(ConfigureGameDetailsPromptBehaviour), "initialize"),
             postfix: new HarmonyMethod(typeof(NativeOnlineSetupFlow), nameof(ConfigureDetails)));
         patched = true;
+    }
+
+    private static void RestoreAdditionalSeats(ConfigureOnlineGamePromptBehaviour __instance)
+    {
+        if (!Owns(__instance.Prompt)) return;
+        // Root restores only the four slots declared by its original prompt.
+        // Reuse its preference conversion for controller, faction and Clockwork.
+        for (var seat = 4; seat < 6; seat++) __instance.SetupPlayerPrefForIndex(seat);
+    }
+
+    private static void SaveAdditionalSeats(ConfigureOnlineGamePromptBehaviour __instance)
+    {
+        if (!Owns(__instance.Prompt)) return;
+        for (var seat = 4; seat < 6; seat++) __instance.SavePlayerPreferences(seat);
     }
 
     private static bool Back(ConfigureOnlineGamePromptBehaviour __instance)

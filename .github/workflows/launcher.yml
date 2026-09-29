@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: launcher-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   GOMAXPROCS: '2'
@@ -46,7 +46,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
-          cache: false
+          cache: true
+          cache-dependency-path: launcher-native/go.sum
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -72,7 +73,6 @@ jobs:
 
   build:
     name: Build player packages
-    needs: checks
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -81,9 +81,22 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: '1.26.x'
           cache: false
+      - name: Cache packaging Go dependencies and compiled packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .lab/go-cache
+            .lab/go-mod
+          key: ${{ runner.os }}-${{ runner.arch }}-packaging-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('launcher-native/go.mod', 'launcher-native/go.sum') }}
+      - name: Cache verified packaging downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: .lab/native-launcher-downloads
+          key: packaging-downloads-${{ hashFiles('scripts/package-native-launcher.py', 'scripts/appimage_package.py', 'launcher-native/third-party/source-archives.json') }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -116,6 +129,7 @@ jobs:
           python scripts/launcher_release.py --output dist/release-assets
           expected=$(python scripts/launcher_release.py)
           ROOT_APPIMAGE_TEST="$GITHUB_WORKSPACE/dist/RootSixPlayer-$expected-x86_64.AppImage" \
+            GOCACHE="$GITHUB_WORKSPACE/.lab/go-cache" GOMODCACHE="$GITHUB_WORKSPACE/.lab/go-mod" \
             go -C launcher-native test -p 1 -run TestPackagedAppImageReplacement -v
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -137,7 +151,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
-          cache: false
+          cache: true
+          cache-dependency-path: launcher-native/go.sum
       - name: Install NSIS for installer regression fixtures
         run: choco install nsis --version=3.08 -y --no-progress --allow-downgrade
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -153,7 +168,7 @@ jobs:
 
   release:
     name: Publish playtest release
-    needs: [build, windows-package]
+    needs: [checks, build, windows-package]
     if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     timeout-minutes: 5

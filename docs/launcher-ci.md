@@ -22,6 +22,12 @@ Changes limited to Markdown files or `docs/` skip push and pull-request runs.
 `RELEASE.md` still triggers checks because its version header is validated.
 Version tags and manual runs always run, regardless of changed paths.
 
+Tests and packaging run in parallel; publishing waits for both and the Windows
+installer checks. New branch runs cancel superseded runs. Tag runs are not cancelled.
+CI caches Go modules and compiled packages, plus checksum-verified packaging
+downloads. Steam sessions, game files, and generated game bindings are not cached.
+Cached downloads are checked against the pinned hashes on every use.
+
 Player assets are `RootSixPlayer-<version>-Setup.exe`,
 `RootSixPlayer-<version>-x86_64.AppImage`, and `SHA256SUMS`. The Windows installer
 installs per user and creates a Start menu shortcut. Linux users run the AppImage.

@@ -11,9 +11,10 @@ the CI toolchain upgrade does not update the runtime shipped to players.
 
 - Pull requests run Linux and Windows launcher unit tests, release validation,
   packaging-helper tests, and the standalone multiplayer protocol tests.
-- Pushes to `main` and manual **Run workflow** runs also compile the mod, build
-  both launchers, and upload a `launcher-<commit>` artifact for 14 days.
-- Version tags such as `v0.7.0` do the same and automatically publish a release
+- Pushes to `main` run the same checks as pull requests.
+- Manual **Run workflow** runs also compile the mod, build both launchers,
+  and upload a `launcher-<commit>` artifact for 14 days.
+- Version tags such as `v0.7.0` build the packages and automatically publish a release
   after all checks, including Windows installation and update tests, pass. Pushing
   the tag is the release action. It becomes the latest release so the README's
   download link resolves to it. Existing releases are never overwritten.
@@ -22,8 +23,8 @@ Changes limited to Markdown files or `docs/` skip push and pull-request runs.
 `RELEASE.md` still triggers checks because its version header is validated.
 Version tags and manual runs always run, regardless of changed paths.
 
-Tests and packaging run in parallel; publishing waits for both and the Windows
-installer checks. New branch runs cancel superseded runs. Tag runs are not cancelled.
+On tags and manual runs, tests and packaging run in parallel; publishing waits
+for both and the Windows installer checks. New runs do not cancel active runs.
 CI caches Go modules and compiled packages, plus checksum-verified packaging
 downloads. Steam sessions, game files, and generated game bindings are not cached.
 Cached downloads are checked against the pinned hashes on every use.

@@ -6,7 +6,7 @@ A mod and launcher for private six-player games of [Root](https://store.steampow
 
 ## Download
 
-**[Download Root Six Player](https://github.com/AugusDogus/root-six-player/releases/latest)**
+**[Download Root Six Player](https://github.com/AugusDogus/root/releases/latest)**
 
 | System | Download and run |
 | --- | --- |
@@ -57,7 +57,7 @@ If Linux reports that FUSE is unavailable, run the AppImage with `--appimage-ext
 
 A failed update check keeps the installed version usable. You can also download the latest launcher from the release page.
 
-If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text when [reporting an issue](https://github.com/AugusDogus/root-six-player/issues).
+If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text when [reporting an issue](https://github.com/AugusDogus/root/issues).
 
 ## Playtest status
 

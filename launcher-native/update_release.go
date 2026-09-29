@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const releaseRepository = "AugusDogus/root-six-player"
+const releaseRepository = "AugusDogus/root"
 const releaseAPI = "https://api.github.com/repos/" + releaseRepository + "/releases/latest"
 const maxUpdateSize int64 = 320 << 20
 

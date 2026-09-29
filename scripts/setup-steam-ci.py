@@ -12,7 +12,7 @@ from steam_ci import bootstrap, command, decode_session, environment, login_argu
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repo', default='AugusDogus/root-six-player')
+    parser.add_argument('--repo', default='AugusDogus/root')
     args = parser.parse_args()
     if not sys.stdin.isatty():
         raise SystemExit('Run this setup in your own terminal so Steam can prompt privately for your password and Steam Guard approval.')

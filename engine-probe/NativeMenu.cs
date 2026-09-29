@@ -153,8 +153,8 @@ internal sealed class NativeMenu
         Button("Join friends", 28, 467, 340, 66, Waiting);
         Button("Resume a game", 28, 554, 340, 66, Saves);
         Button("Quit game", 28, 696, 290, 62, Application.Quit);
-        Text("Version 0.7.6 · Friends' playtest", 28, 635, 410, 32, 18);
-        Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root-six-player/releases"));
+        Text("Version 0.7.7 · Friends' playtest", 28, 635, 410, 32, 18);
+        Button("Get updates", 930, 696, 300, 62, () => Application.OpenURL("https://github.com/AugusDogus/root/releases"));
     }
 
     private void Host(string? save, MatchSetup? setup = null, string? initialization = null)

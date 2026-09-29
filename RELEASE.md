@@ -1,14 +1,15 @@
-# Root Six Player 0.7.6
+# Root Six Player 0.7.7
 
-- Install Root Six Player for your Windows account with a Start menu shortcut.
-- Update through Setup: wait for the launcher to close, replace it, and reopen it.
-- Uninstall the launcher while keeping game files, settings, and saved matches.
+- Update the launcher and in-game release links for the repository's new name, `AugusDogus/root`.
 
-**Windows:** download and run **RootSixPlayer-0.7.6-Setup.exe**, then open
+Download this release manually if you have an earlier launcher. Earlier versions
+look for updates under the old repository name.
+
+**Windows:** download and run **RootSixPlayer-0.7.7-Setup.exe**, then open
 **Root Six Player** from the Start menu. Users of 0.7.5 or earlier need to run
 Setup once. The standalone Windows EXE and ZIP are no longer distributed.
 
-**Linux:** download **RootSixPlayer-0.7.6-x86_64.AppImage**, allow it to run as a
+**Linux:** download **RootSixPlayer-0.7.7-x86_64.AppImage**, allow it to run as a
 program in file properties, and open it. If FUSE is unavailable, run it with
 `--appimage-extract-and-run`.
 

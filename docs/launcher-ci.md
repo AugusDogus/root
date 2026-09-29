@@ -84,7 +84,7 @@ Game files and generated bindings stay on the temporary runner. Only the mod
 and normal launcher dependencies enter the player packages. There is no manual
 build-reference archive upload.
 
-The [first successful hosted build](https://github.com/AugusDogus/root-six-player/actions/runs/36350950836)
+The [first successful hosted build](https://github.com/AugusDogus/root/actions/runs/36350950836)
 verified authenticated downloading, offline binding generation, mod compilation,
 both launcher packages, and the native Windows executable smoke test.
 

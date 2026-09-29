@@ -10,7 +10,7 @@ import (
 
 const AppID = "965580"
 const GameBuild = "22238765"
-const Version = "0.7.6"
+const Version = "0.7.7"
 
 func writeJSON[T any](path string, value T) error {
 	content, err := json.Marshal(value)

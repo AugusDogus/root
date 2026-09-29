@@ -5,6 +5,16 @@ from gameplay_driver import choose
 
 
 class DriverTests(unittest.TestCase):
+    def test_riverfolk_can_buy_available_services_or_decline(self):
+        selection = {'name': 'ArchetypeCustomChoiceRequired', 'value': {
+            'counter': 231, 'forced': False,
+            'prompt': {'id': 'tuber.canis.actions.RiverfolkCompanyActions.BuyRiverfolkServices'},
+            'buttons': [[{'name': 500041, 'value': disabled}] for disabled in (False, True, False)]}}
+        choices = {choose(selection, random.Random(seed), set())['choice'] for seed in range(20)}
+        self.assertEqual(choices, {None, 0, 2})
+        selection['value']['buttons'] = [[{'name': 500041, 'value': True}]]
+        self.assertIsNone(choose(selection, random.Random(0), set())['choice'])
+
     def test_optional_steps_can_end_even_when_sources_remain(self):
         selection = {'name': 'SelectionWithTargetsRequired', 'value': {
             'counter': 1, 'forced': False, 'prompt': {'id': 'optional-step'},

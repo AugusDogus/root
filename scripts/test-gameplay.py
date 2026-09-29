@@ -112,6 +112,9 @@ def main():
                                          if isinstance(attribute.get('value'), dict) and 'id' in attribute['value'])
                     for expected in ['Log.initiate.battle', 'Log.Roll', 'Log.Casualties']:
                         assert log_counts[expected] > 0, f'Native game log did not demonstrate {expected}'
+                    if args.resume_checkpoint is None:
+                        assert any(name.startswith('log.buy.service.') and count > 0 for name, count in log_counts.items()), \
+                            'Native game log did not demonstrate a completed Riverfolk service purchase'
                     assert all(decisions[seat] > 0 for seat in range(1, 7))
                     result['nativeLogCounts'] = dict(log_counts)
                     result['standings'] = [{key: player[key] for key in ['faction', 'score', 'didWin', 'wasDominanceWin']} for player in final_results[0]]

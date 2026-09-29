@@ -7,8 +7,16 @@ def choose(selection, rng, undo_ids):
     if name == 'RiverfolkPricesRequired':
         return {**request, 'op': 'prices', 'handCard': 1, 'riverboats': 1, 'mercenaries': 1}
     if name in ('ArchetypeCustomChoiceRequired', 'CustomChoiceRequired'):
-        if value['prompt']['id'].endswith('.BuyRiverfolkServices') and not value.get('forced', True):
-            return {**request, 'op': 'custom', 'choice': None}
+        if value['prompt']['id'].endswith('.BuyRiverfolkServices'):
+            # Root's registered Disabled attribute excludes unaffordable or
+            # already purchased services. Exercise purchases as well as decline.
+            available = [index for index, button in enumerate(value['buttons'])
+                         if not any(attribute['name'] == 500041 and attribute['value'] for attribute in button)]
+            if not value.get('forced', True) and (not available or rng.randrange(4) == 0):
+                return {**request, 'op': 'custom', 'choice': None}
+            if not available:
+                raise ValueError('No available Riverfolk service for a forced choice')
+            return {**request, 'op': 'custom', 'choice': rng.choice(available)}
         return {**request, 'op': 'custom', 'choice': rng.randrange(len(value['buttons']))}
     if name == 'IntChoiceRequired':
         return {**request, 'op': 'custom', 'choice': value['min']}

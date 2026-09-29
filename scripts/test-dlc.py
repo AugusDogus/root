@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise DLC setup and turns in muted, isolated native six-seat matches."""
 from collections import Counter
+import argparse
 import json
 import os
 from pathlib import Path
@@ -49,13 +50,16 @@ CASES = [
 ]
 
 
-def run_case(lab, name, setup):
+def run_case(lab, name, setup, resume_checkpoint=None):
     seed = int(os.environ.get('ROOT_DLC_TEST_SEED', '12345'))
     (lab / 'host/results/server/pending.json').unlink(missing_ok=True)
     (lab / 'host/match-setup.json').write_text(json.dumps(setup))
     scratch = tempfile.TemporaryDirectory(prefix='dlc-recovery-', dir=lab)
-    checkpoint = Path(scratch.name) / 'checkpoint.json' if name.startswith(('clockwork', 'ai-')) or name == 'vagabond-pair-1' else None
-    game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=checkpoint, test_seed=seed)
+    checkpoint = Path(scratch.name) / 'checkpoint.json' if resume_checkpoint or name.startswith(('clockwork', 'ai-')) or name == 'vagabond-pair-1' else None
+    if resume_checkpoint:
+        shutil.copy2(resume_checkpoint, checkpoint)
+    game = GameProcess(discover(), lab / 'host', 'server', headless=True, save=checkpoint,
+                       resume=resume_checkpoint is not None, test_seed=seed)
     endpoint = None
     report = {'name': name, 'status': 'failed', 'setup': setup, 'seed': seed}
     prompts = Counter()
@@ -69,7 +73,7 @@ def run_case(lab, name, setup):
         for seat in set(range(6)) - set(humans):
             response = request(seat, {'op': 'join'})
             assert response == {'ok': False, 'error': 'BotSeat'}, f"AI seat {seat + 1}: ok={response.get('ok')}, error={response.get('error')}"
-        rng = random.Random(12345)
+        rng = random.Random(seed)
         undo_ids = set()
         cursors = {seat: 0 for seat in humans}
         selections = {seat: None for seat in humans}
@@ -147,18 +151,19 @@ def run_case(lab, name, setup):
             raise RuntimeError(f'Insufficient seat coverage after 400 decisions: {dict(decisions_by_seat)}')
         return report
     except Exception as error:
+        failure_name = name + ('-replay' if resume_checkpoint else '')
         report['error'] = traceback.format_exc()
         report['decisions'] = sum(decisions_by_seat.values())
         if latest is not None:
             report['actualSetup'] = latest['setup']
-            (lab / f'{name}-failed-replies.json').write_text(json.dumps(replies))
+            (lab / f'{failure_name}-failed-replies.json').write_text(json.dumps(replies))
         if checkpoint is not None and checkpoint.exists():
-            shutil.copy2(checkpoint, lab / f'{name}-failed-checkpoint.json')
+            shutil.copy2(checkpoint, lab / f'{failure_name}-failed-checkpoint.json')
         for filename in ('player.log',):
             diagnostic = lab / 'host/results/server' / filename
             if diagnostic.exists():
-                shutil.copy2(diagnostic, lab / f'{name}-{filename}')
-        shutil.copy2(lab / 'host/game/BepInEx/LogOutput.log', PROJECT / 'results' / f'dlc-{name}-error.log')
+                shutil.copy2(diagnostic, lab / f'{failure_name}-{filename}')
+        shutil.copy2(lab / 'host/game/BepInEx/LogOutput.log', PROJECT / 'results' / f'dlc-{failure_name}-error.log')
         return report
     finally:
         report['prompts'] = dict(prompts)
@@ -174,6 +179,14 @@ def run_case(lab, name, setup):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('cases', nargs='*', help='Case names; omit to test all configurations')
+    parser.add_argument('--resume-checkpoint', type=Path, help='Replay one case from a disposable copy of a failed checkpoint')
+    args = parser.parse_args()
+    if set(args.cases) - {name for name, _ in CASES}:
+        parser.error('Unknown DLC case name')
+    if args.resume_checkpoint and (len(args.cases) != 1 or not args.resume_checkpoint.is_file()):
+        parser.error('--resume-checkpoint requires one case and an existing checkpoint')
     os.umask(0o077)
     lab = PROJECT / '.lab/steam-game-probe'
     reports = []
@@ -183,10 +196,10 @@ def main():
     with lock_data(lab):
         shutil.copy2(PROJECT / 'engine-probe/bin/Debug/net6.0/EngineProbe.dll', lab / 'host/game/BepInEx/plugins/EngineProbe.dll')
         for name, setup in CASES:
-            if len(sys.argv) > 1 and name not in sys.argv[1:]:
+            if args.cases and name not in args.cases:
                 continue
             print(f'Testing {name}…', flush=True)
-            report = run_case(lab, name, setup)
+            report = run_case(lab, name, setup, args.resume_checkpoint)
             reports.append(report)
             by_name[name] = report
             (PROJECT / 'results' / f'dlc-{name}-test.json').write_text(json.dumps(report, indent=2) + '\n')

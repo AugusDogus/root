@@ -44,6 +44,7 @@ jobs:
         run: |
           python scripts/launcher_release.py
           python scripts/test-ci-packaging.py
+          python scripts/test-gameplay-driver.py
       - name: Test launcher with fixture payload
         shell: bash
         run: |

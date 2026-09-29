@@ -5,7 +5,7 @@ using BepInEx.Unity.IL2CPP;
 
 namespace RootEngineProbe;
 
-[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.7.3")]
+[BepInPlugin("local.root.engineprobe", "Root Engine Probe", "0.7.4")]
 public sealed class Plugin : BasePlugin
 {
     public override void Load()

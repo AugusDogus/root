@@ -216,7 +216,7 @@ func launcherUpdate(ctx context.Context, data string, progress func(string)) (st
 func launcherUpdateWithClient(ctx context.Context, client *http.Client, data string, progress func(string)) (string, error) {
 	cached, err := cachedLauncherUpdate(data, Version, runtime.GOOS)
 	if err != nil {
-		return "", fmt.Errorf("The saved launcher update could not be verified. Download the latest launcher from GitHub Releases and open it to recover: %w", err)
+		return "", fmt.Errorf("The saved launcher update could not be verified. Delete %s, then open a freshly downloaded launcher. Saved matches are outside that folder and are unchanged: %w", filepath.Join(data, "launcher-updates"), err)
 	}
 	if cached != "" {
 		return cached, nil

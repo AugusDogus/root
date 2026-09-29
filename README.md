@@ -15,6 +15,8 @@ A mod and launcher for private six-player games of [Root](https://store.steampow
 
 The launcher finds Root, sets up a separate modded copy, and opens the game. First launch can take a few minutes. Everyone in a match should use the same release.
 
+![The launcher using Root's forest artwork and menu font](docs/screenshots/launcher.png)
+
 Downloads require access to this private repository.
 
 ## Requirements
@@ -49,7 +51,9 @@ Matches save automatically. To continue later, the host chooses **Resume a game*
 
 ## Updates and troubleshooting
 
-Close Root before opening a newer launcher. Updates preserve compatible saved matches. Everyone should update together.
+From 0.7.4 onward, the launcher checks for updates when opened. Keep using the same launcher file; it opens the newer version after downloading it. Updates preserve compatible saved matches. Close Root before updating.
+
+Automatic updates need public release downloads. While this repository is private, download newer launchers from the release page. A failed update check keeps the installed version usable.
 
 If something goes wrong, use **Copy diagnostics** in the **Match** menu or on the error screen. Include that text when [reporting an issue](https://github.com/AugusDogus/root-six-player/issues).
 

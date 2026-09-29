@@ -1,7 +1,9 @@
-# Root Six Player 0.7.3
+# Root Six Player 0.7.4
 
-- Fix Alliance Recruit and Undo, along with other actions whose targets the game selects automatically.
-- Place the Vagabond inventory beside its bottom panel, with the hand fitted between the inventory and action buttons.
+- Use Root's original forest artwork, logo, and menu font in the launcher startup window on Windows and Linux.
+- Check for launcher updates when opened, verify the download, and start the newer version automatically. Update downloads become available when this repository is public.
+- Keep the installed version usable when update checks or downloads fail.
+- Retry interrupted build dependency downloads.
 
 Known issue: Shift+Tab may not open the Steam overlay when launched directly.
 The mod's invitation controls still work. This release adds overlay status to

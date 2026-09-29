@@ -18,6 +18,7 @@ internal static class SelectionValidationProbe
         try
         {
             NumericChoiceProbe.Run(results, failures);
+            NativeActionResponseProbe.Run(results, failures);
             var ids = Enumerable.Range(0, 3).Select(_ => new EntityID(Guid.NewGuid().ToString())).ToArray();
             foreach (var forced in new[] { false, true })
             foreach (var minimum in new[] { -1, 0, 1, 2, 4 })

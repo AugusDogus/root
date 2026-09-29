@@ -238,12 +238,8 @@ internal sealed class HostedMatch
         if (selection is null) return ChoiceResult.UnsupportedSelection;
         var sourceId = new EntityID(source);
         if (selection.TargetMap.TryGetValue(sourceId, out var information) == false) return ChoiceResult.InvalidSource;
-        if (information.Length != choices.Count) return ChoiceResult.InvalidTarget;
-        for (var index = 0; index < choices.Count; index++)
-        {
-            var result = choices[index].Validate(information[index]);
-            if (result != ChoiceResult.Accepted) return result;
-        }
+        var validation = TargetChoice.ValidateResponse(information, choices);
+        if (validation != ChoiceResult.Accepted) return validation;
         var responses = new Il2CppSystem.Collections.Generic.List<TargetResponse>();
         foreach (var choice in choices) responses.Add(choice.ToNative());
         var response = new SelectionWithTargets(selection, sourceId,
@@ -265,7 +261,7 @@ internal sealed class HostedMatch
             // An automatically selected source still requires its forced targets.
             // Optional targets, such as the discard undo prompt, may be skipped.
             foreach (var target in information)
-                if (target.TryCast<EntityListTargetInformation>() is not { Forced: false } &&
+                if (target.Selected && target.TryCast<EntityListTargetInformation>() is not { Forced: false } &&
                     target.TryCast<EntityGroupingTargetInformation>() is not { Forced: false, MinimumToSelect: 0 })
                     return ChoiceResult.UnsupportedSelection;
         }

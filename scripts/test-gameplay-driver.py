@@ -5,6 +5,14 @@ from gameplay_driver import choose, choose_undo
 
 
 class DriverTests(unittest.TestCase):
+    def test_recruit_omits_automatic_targets(self):
+        selection = {'name': 'SelectionWithTargetsRequired', 'value': {
+            'counter': 41, 'forced': True, 'prompt': {'id': 'WoodlandAllianceEveningAction'},
+            'targetMap': {'recruit': [{'name': 'EntityListTargetInformation', 'selected': False,
+                'validTargets': ['base'], 'numberToSelect': 1, 'minimumToSelect': 1, 'forced': True}]}}}
+        self.assertEqual(choose(selection, random.Random(0), set()), {
+            'counter': 41, 'op': 'targets', 'source': 'recruit', 'targets': []})
+
     def test_undo_uses_the_offered_undo_action(self):
         selection = {'name': 'SelectionWithTargetsRequired', 'value': {
             'counter': 42, 'targetMap': {
@@ -13,6 +21,8 @@ class DriverTests(unittest.TestCase):
                           'validTargets': [], 'targetPrompt': {'id': 'undoAbility.prompt'}}]}}}
         self.assertEqual(choose_undo(selection), {'counter': 42, 'op': 'targets', 'source': 'undo',
                                                  'targets': [{'kind': 'entities', 'values': []}]})
+        selection['value']['targetMap']['undo'][0]['selected'] = False
+        self.assertEqual(choose_undo(selection), {'counter': 42, 'op': 'targets', 'source': 'undo', 'targets': []})
         selection['value']['targetMap']['undo'][0]['forced'] = True
         self.assertIsNone(choose_undo(selection))
         del selection['value']['targetMap']['undo']

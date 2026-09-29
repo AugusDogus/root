@@ -93,6 +93,19 @@ internal static class LoopbackProbe
                             : lobby?.Handle(seat, op, root) ?? Error("HostUnavailable");
                         host ??= lobby?.Started;
                         activeHost = host;
+                        if (host is not null && seat >= 0 && op is "targets" or "pass" or "custom" or "prices")
+                        {
+                            var outcome = JsonSerializer.SerializeToElement(reply);
+                            if (!outcome.GetProperty("ok").GetBoolean())
+                            {
+                                TryInt(root, "counter", out var counter);
+                                var current = host.Thread.GetCounterForPlayerEntity(host.SeatPlayers[seat]);
+                                var prompt = host.Thread.HasPendingResponse(current)
+                                    ? host.Thread.GetPlayerPendingResponse(current).Item2.Selection.Prompt.ID : "none";
+                                // Do not log the request: it contains invitation credentials and may contain private cards.
+                                log.LogWarning($"Choice rejected: seat={seat + 1} op={op} counter={counter} current={current} prompt={prompt} error={outcome.GetProperty("error").GetString()}");
+                            }
+                        }
                         if (host is not null && checkpoint is not null && seat >= 0 && !host.Resigning && op is not ("poll" or "join" or "ready") &&
                             JsonSerializer.SerializeToElement(reply).GetProperty("ok").GetBoolean())
                         {

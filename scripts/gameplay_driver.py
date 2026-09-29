@@ -10,7 +10,7 @@ def choose_undo(selection):
         if all(item['name'] == 'EntityListTargetInformation' and not item.get('forced', False)
                and not item['validTargets'] for item in information):
             return {'counter': value['counter'], 'op': 'targets', 'source': source,
-                    'targets': [{'kind': 'entities', 'values': []} for _ in information]}
+                    'targets': [{'kind': 'entities', 'values': []} for item in information if item.get('selected', True)]}
     return None
 
 
@@ -53,6 +53,8 @@ def choose(selection, rng, undo_ids):
         targets = []
         actionable = True
         for item in information:
+            if not item.get('selected', True):
+                continue
             kind = item['name']
             if kind in ('EntityListTargetInformation', 'RevealEntityListTargetInformation'):
                 valid = [target for target in item['validTargets'] if target not in undo_ids]

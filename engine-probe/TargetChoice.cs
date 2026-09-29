@@ -11,6 +11,20 @@ internal abstract record TargetChoice
     public abstract TargetResponse ToNative();
     public abstract object ToWire();
 
+    public static ChoiceResult ValidateResponse(IEnumerable<TargetInformation> information, IReadOnlyList<TargetChoice> choices)
+    {
+        // Root's SelectionWithTargetsNode omits automatic targets from its
+        // response. The rules engine supplies those targets itself.
+        var selected = information.Where(target => target.Selected).ToArray();
+        if (selected.Length != choices.Count) return ChoiceResult.InvalidTarget;
+        for (var index = 0; index < selected.Length; index++)
+        {
+            var result = choices[index].Validate(selected[index]);
+            if (result != ChoiceResult.Accepted) return result;
+        }
+        return ChoiceResult.Accepted;
+    }
+
     public sealed record Entities(string[] Values) : TargetChoice
     {
         public override ChoiceResult Validate(TargetInformation information)

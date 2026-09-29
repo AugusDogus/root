@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import shutil
 import struct
 
 from windows_launcher import PROJECT, windows_path, windows_process
@@ -46,6 +45,13 @@ def main():
         assert process.wait(timeout=120) == 0
     assert (licenses / 'THIRD-PARTY-NOTICES.txt').stat().st_size > 1000
     assert (licenses / 'dependency-sources.zip').is_file()
+    preserved = executable.parent / 'keep-test.txt'
+    preserved.write_text('unrelated file')
+    with windows_process(lab, [str(executable.parent / 'Uninstall.exe'), '/S']) as process:
+        assert process.wait(timeout=120) == 0
+    assert not executable.exists()
+    assert preserved.read_text() == 'unrelated file'
+    preserved.unlink()
     result = {'status': 'passed', 'perUserWindowsInstaller': True, 'windowed': True,
               'adjacentFilesRequired': False, 'bundledDependencies': True,
               'cleanExit': True, 'browserInterfaceRemoved': True,

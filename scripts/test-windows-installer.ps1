@@ -24,9 +24,13 @@ function Install($file) {
     Wait-Success (Start-Process -FilePath $file -ArgumentList '/S' -PassThru)
 }
 function Uninstall {
-    # _?= runs the uninstaller in place so its process is the one we wait for.
-    Wait-Success (Start-Process -FilePath (Join-Path $installed 'Uninstall.exe') -ArgumentList "/S _?=$installed" -PassThru)
-    Remove-Item (Join-Path $installed 'Uninstall.exe') -ErrorAction SilentlyContinue
+    Wait-Success (Start-Process -FilePath (Join-Path $installed 'Uninstall.exe') -ArgumentList '/S' -PassThru)
+    # The normal NSIS uninstaller continues from a temporary copy.
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    while ((Test-Path $launcher) -or (Test-Path (Join-Path $installed 'Uninstall.exe')) -or (Test-Path $registry)) {
+        if ([DateTime]::UtcNow -gt $deadline) { throw 'Uninstall did not finish removing its files and registration.' }
+        Start-Sleep -Milliseconds 100
+    }
 }
 function Wait-File($path) {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)

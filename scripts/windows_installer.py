@@ -37,9 +37,11 @@ def check_installer(artifact, binary, digest):
                        check=True, stdout=subprocess.DEVNULL)
         extracted = Path(temporary)
         files = {str(path.relative_to(extracted)) for path in extracted.rglob('*') if path.is_file()}
-        expected = {'RootSixPlayer.exe.new', 'Uninstall.exe.new',
+        expected = {'RootSixPlayer.exe.new',
                     '$PLUGINSDIR/System.dll', '$PLUGINSDIR/nsDialogs.dll', '$PLUGINSDIR/modern-wizard.bmp'}
-        if files != expected:
+        # p7zip 16 extracts embedded files but not NSIS's generated uninstaller.
+        # Newer 7-Zip reconstructs it. Native Windows CI exercises that executable.
+        if files - {'Uninstall.exe.new'} != expected:
             raise ValueError(f'Installer has unexpected contents: {sorted(files)}')
         if digest(extracted / 'RootSixPlayer.exe.new') != digest(binary):
             raise ValueError('Installer contains a different launcher. Rebuild before publishing.')
